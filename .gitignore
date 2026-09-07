@@ -1,0 +1,17 @@
+target/
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+.vscode/
+.DS_Store
+*.log
+
+# secrets
+config/application-local.yml
+config/telegram-chats.txt
+.env
+/models/
+data/
+

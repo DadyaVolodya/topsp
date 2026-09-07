@@ -1,0 +1,15 @@
+# local overrides, не коммитить
+spring:
+  ai:
+    openai:
+      api-key: YOUR_INFERECO_KEY
+
+meet:
+  specs:
+    dir: /path/to/specs
+    file: ""
+    tasks-dir: /path/to/tasks
+  code:
+    dirs:
+      - /path/to/frontend
+      - /path/to/backend

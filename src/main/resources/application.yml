@@ -1,0 +1,102 @@
+# Все тюнинг-параметры демо: блок meet.* и spring.ai.*
+# Срез для человека: GET /api/tuning
+spring:
+  application:
+    name: meet-assist
+  threads:
+    virtual:
+      enabled: true
+  servlet:
+    multipart:
+      max-file-size: 8MB
+      max-request-size: 8MB
+  profiles:
+    default: local
+  ai:
+    model:
+      chat: openai
+      embedding: none
+    openai:
+      api-key: ${INFERECO_API_KEY:}
+      base-url: https://api.infereco.ru/v1
+      chat:
+        model: ${meet.models.chat}
+        temperature: 0.2
+    retry:
+      max-attempts: 1
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
+meet:
+  topic: "Напарник: эфир, СП ПТО, Doom"
+  system-prompt: |
+    Ты напарник. Три скила: созвон по голосу, обучалка ПТО по постановкам и коду, Doom-рация.
+    На созвоне опирайся только на эфир, кадр не смотри.
+    По ПТО опирайся на СП, код aisto-front и aisto-pto-back, страницы сайта.
+    В Doom смотри кадр игры.
+    Говори по-русски, сразу по делу. Не здоровайся. Не пиши «я готов».
+    Сначала суть, потом один конкретный ход.
+    Не выдумывай имена, цифры и кнопки, которых не было в эфире, СП, коде или в кадре Doom.
+  screen-prompt: |
+    Ты глаза рации в Doom. Кадр важнее догадки. Не выдумывай то, чего нет на картинке.
+    Одна короткая подсказка куда идти.
+  doom-topic: "Doom-рация: живые подсказки, куда идти и какие читы вбить"
+  doom-system-prompt: |
+    Ты рация напарника в shareware Doom (карта по умолчанию E1M1 Hangar).
+    Говори по-русски, коротко, как морпех по рации. Не здоровайся. Не говори что ты ИИ.
+    Опирайся на базу: маршрут Hangar, читы, тактику, выученные факты.
+    Подсказывай куда идти, что подобрать, кого не игнорировать.
+    Чит давай только если игрок просит, застрял или помирает. Код пиши латиницей слитно: iddqd, idkfa, idclip.
+    Не выдумывай ключи на E1M1: на Hangar ключей нет, нужен рычаг и EXIT.
+  models:
+    chat: minimax/minimax-m3
+    critic: glm-5.3
+    fast: glm-5.3
+    vision: openai/gpt-5.4-mini
+  voice:
+    pause-ms: 1500
+    max-utterance-ms: 60000
+    hint-idle-ms: 0
+  improve:
+    revise-below: 7
+    max-revisions: 0
+  speed:
+    temperature: 0.2
+    chat-max-tokens: 420
+    hint-max-tokens: 220
+    screen-max-tokens: 280
+    history-messages: 8
+  style:
+    max-sentences: 4
+    allow-markdown: false
+  demo:
+    pto:
+      url: https://dev.aisto.local
+      api: https://dev.aisto.local/api
+      login: pto-pp
+      password: ${PTO_DEMO_PASSWORD:}
+  stt:
+    sample-rate: 16000
+    model-dir: models/vosk-model-small-ru-0.22
+    model-url: https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip
+  specs:
+    dir: /Users/sparrow/Documents/pto/СП
+    file: "Системная+постановка_+Проект+АИС+«Платформа+творческого+образования» (2).doc"
+    tasks-dir: /Users/sparrow/Documents/pto/задачи/авто
+  telegram:
+    token: ${TELEGRAM_BOT_TOKEN:}
+    chat-id: ${TELEGRAM_CHAT_ID:}
+  code:
+    dirs:
+      - /Users/sparrow/Documents/pto/projects/aisto-front
+      - /Users/sparrow/Documents/pto/projects/aisto-pto-back

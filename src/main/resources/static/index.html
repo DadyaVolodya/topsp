@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Напарник</title>
+  <link rel="stylesheet" href="/app.css?v=voice1">
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>Напарник<button type="button" id="secret" class="secret"></button></h1>
+      <p id="topic">тема загружается</p>
+      <p id="skill-label">скил: собеседование</p>
+    </div>
+    <div class="models" id="models"></div>
+  </header>
+
+  <main class="layout">
+    <section class="panel game-stage" id="game-stage" hidden>
+      <div class="game-toolbar">
+        <span id="game-status" class="status">секрет открыт. гружу Doom...</span>
+        <div class="cheats" id="cheats">
+          <button type="button" data-cheat="iddqd">бог iddqd</button>
+          <button type="button" data-cheat="idkfa">стволы idkfa</button>
+          <button type="button" data-cheat="idclip">стены idclip</button>
+        </div>
+      </div>
+      <div id="radio-deck" class="radio-deck" hidden>
+        <div class="radio-col">
+          <div class="radio-tag">ты</div>
+          <p id="radio-live">микрофон выключен</p>
+        </div>
+        <div class="radio-col radio-col-hint">
+          <div class="radio-tag">рация</div>
+          <p id="radio-line">жди подсказку...</p>
+        </div>
+        <img id="radio-frame" alt="кадр Doom" hidden>
+      </div>
+      <div class="dos-wrap">
+        <div id="dos" class="dos"></div>
+      </div>
+      <p class="hint">Кликни в кадр. Стрелки ходить, ctrl огонь, пробел дверь, alt стрейф, tab карта. Звук игры выключен, рация слушает только твой микрофон.</p>
+    </section>
+
+    <section class="panel chat">
+      <h2 id="chat-title">Эфир</h2>
+      <label class="radio-toggle" id="radio-wrap" hidden>
+        <input type="checkbox" id="radio-on" checked>
+        живые подсказки
+      </label>
+      <div id="screen-watch" class="screen-watch" hidden>
+        <img id="screen-preview" alt="кадр экрана">
+        <p id="screen-caption">смотрю окно</p>
+      </div>
+      <div id="log" class="log"></div>
+      <form id="form" class="composer">
+        <button type="button" id="mic" class="mic">старт</button>
+        <button type="button" id="screen" class="screen" hidden>экран</button>
+        <input id="text" type="text" placeholder="скажите или напишите: вопрос на созвоне, СП, карта aisto" autocomplete="off">
+        <button type="submit">отправить</button>
+      </form>
+      <p id="voice-status" class="status">старт: эфир созвона. ПТО по СП. Doom сам снимает кадр игры.</p>
+    </section>
+
+    <aside class="panel metrics" id="metrics-panel">
+      <h2>Самоулучшение</h2>
+      <p class="hint">Созвон: только голос. ПТО: СП и код aisto-front / aisto-pto-back. При правке СП бот пишет в Telegram и ставит задачу разработчику.</p>
+      <p id="improve-status" class="hint"></p>
+      <dl id="stats"></dl>
+      <p id="last-fact" class="hint"></p>
+
+      <h3>Загрузить TXT в RAG</h3>
+      <form id="upload" class="upload">
+        <input id="txt-file" type="file" accept=".txt,text/plain">
+        <button type="submit">добавить в базу</button>
+      </form>
+      <p id="upload-status" class="hint">Положите регламент встречи или правила команды.</p>
+
+      <h3>Telegram</h3>
+      <p id="telegram-status" class="hint">проверяю бота...</p>
+
+      <h3>СП</h3>
+      <p id="specs-status" class="hint">загружаю системные постановки...</p>
+      <ul id="specs"></ul>
+
+      <h3>Код</h3>
+      <p id="code-status" class="hint">индексирую aisto-front и бэкенд...</p>
+      <ul id="code"></ul>
+
+      <h3>Задачи разработчику</h3>
+      <ul id="tasks"></ul>
+
+      <h3>База знаний</h3>
+      <ul id="knowledge"></ul>
+    </aside>
+  </main>
+  <script src="/app.js?v=tg1"></script>
+</body>
+</html>

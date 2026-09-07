@@ -1,0 +1,14 @@
+spring:
+  ai:
+    openai:
+      api-key: test-key
+      base-url: https://api.infereco.ru/v1
+      chat:
+        model: minimax/MiniMax-M2.7
+
+meet:
+  demo:
+    pto:
+      url: https://tvorchestvo.mos.ru/demo
+      login: pto-pp
+      password: test-pass
