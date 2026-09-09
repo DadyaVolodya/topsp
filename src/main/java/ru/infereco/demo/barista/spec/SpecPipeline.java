@@ -144,6 +144,9 @@ public class SpecPipeline {
         long taskMs = System.currentTimeMillis() - t2;
         String notice = notice(current, changes, task);
         lastNotice = notice;
+        if (notify && !notice.isBlank()) {
+            telegram.sendAll(notice);
+        }
         metrics.recordCopilot(
                 diffMs,
                 impactMs,
@@ -327,6 +330,7 @@ public class SpecPipeline {
         }
         out.append("Дальше: #task создаст отдельные задания на front и back.");
         lastNotice = out.toString();
+        telegram.sendAll(out.toString());
         return out.toString();
     }
 
@@ -367,6 +371,7 @@ public class SpecPipeline {
             }
         }
         lastNotice = out.toString();
+        telegram.sendAll(out.toString());
         return out.toString();
     }
 

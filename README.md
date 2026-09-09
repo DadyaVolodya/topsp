@@ -4,7 +4,7 @@
 
 Фронт в этом репозитории демо-прототип. Боевой UI подключается к API ниже (CORS на `/api/**` открыт).
 
-Telegram в этой версии **не используется**. Summary уведомления отдаётся в `GET /api/copilot/overview` поле `lastNotice`.
+Telegram: бот `@assistentPTObot` (токен в `config/application-local.yml`). Напишите боту `/start` - chat id сохранится в `config/telegram-chats.txt`. При изменении СП (пара файлов, `#sp2`, `#sp`, `#task`) notice уходит в Telegram.
 
 ## Запуск
 

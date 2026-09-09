@@ -5,6 +5,9 @@ spring:
       api-key: YOUR_INFERECO_KEY
 
 meet:
+  telegram:
+    token: YOUR_TELEGRAM_BOT_TOKEN
+    # опционально: chat-id: "123456789"
   specs:
     dir: /Users/sparrow/Documents/moi_llm_ne_tvoi_llm/barista-rag/demo/sp
     file: "petclinic-visits.md"
