@@ -6,8 +6,10 @@ import jakarta.annotation.PostConstruct;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
+import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -25,13 +27,15 @@ public class TelegramNotifier {
     private static final Logger LOG = LoggerFactory.getLogger(TelegramNotifier.class);
     private static final Path CHATS_FILE = Path.of("config/telegram-chats.txt");
 
-    private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(20)).build();
     private final ObjectMapper mapper = new ObjectMapper();
     private final MeetProperties properties;
     private final Set<String> chats = new LinkedHashSet<>();
+    private final Object clientLock = new Object();
+    private HttpClient http = newClient();
     private volatile long offset = 0;
     private volatile String lastError = "";
     private volatile String botUsername = "";
+    private volatile int backoffSec = 2;
 
     public TelegramNotifier(MeetProperties properties) {
         this.properties = properties;
@@ -55,7 +59,9 @@ public class TelegramNotifier {
         if (!enabled()) {
             hint = "нет токена в config/application-local.yml";
         } else if (!lastError.isBlank()) {
-            hint = lastError;
+            hint = lastError.contains("timed out") || lastError.contains("Connect")
+                    ? lastError + " — сеть до api.telegram.org пропала. После VPN перезапустите приложение."
+                    : lastError;
         } else if (chats.isEmpty()) {
             hint = "бот @" + (botUsername.isBlank() ? "assistentPTObot" : botUsername)
                     + " жив. Напишите ему /start в Telegram.";
@@ -96,6 +102,7 @@ public class TelegramNotifier {
                 send(chatId, text);
                 lastError = "";
             } catch (Exception ex) {
+                resetClient();
                 lastError = "send " + chatId + ": " + ex.getMessage();
                 LOG.warn("telegram send {}: {}", chatId, ex.getMessage());
             }
@@ -108,12 +115,12 @@ public class TelegramNotifier {
         }
         try {
             String url = "https://api.telegram.org/bot" + token()
-                    + "/getUpdates?timeout=25&offset=" + offset;
+                    + "/getUpdates?timeout=8&offset=" + offset;
             HttpRequest request = HttpRequest.newBuilder(URI.create(url))
-                    .timeout(Duration.ofSeconds(35))
+                    .timeout(Duration.ofSeconds(18))
                     .GET()
                     .build();
-            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = client().send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() >= 400) {
                 lastError = "getUpdates HTTP " + response.statusCode();
                 return;
@@ -124,6 +131,7 @@ public class TelegramNotifier {
                 return;
             }
             lastError = "";
+            backoffSec = 2;
             for (JsonNode update : root.path("result")) {
                 long updateId = update.path("update_id").asLong();
                 offset = Math.max(offset, updateId + 1);
@@ -148,13 +156,10 @@ public class TelegramNotifier {
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
         } catch (Exception ex) {
+            resetClient();
             lastError = ex.getMessage() == null ? "poll failed" : ex.getMessage();
             LOG.warn("telegram poll: {}", lastError);
-            try {
-                Thread.sleep(5_000);
-            } catch (InterruptedException ie) {
-                Thread.currentThread().interrupt();
-            }
+            sleepQuiet(nextBackoffMs(ex));
         }
     }
 
@@ -166,20 +171,22 @@ public class TelegramNotifier {
         try {
             HttpRequest request = HttpRequest.newBuilder(
                             URI.create("https://api.telegram.org/bot" + token() + "/getMe"))
-                    .timeout(Duration.ofSeconds(15))
+                    .timeout(Duration.ofSeconds(12))
                     .GET()
                     .build();
-            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = client().send(request, HttpResponse.BodyHandlers.ofString());
             JsonNode root = mapper.readTree(response.body());
             if (root.path("ok").asBoolean(false)) {
                 botUsername = root.path("result").path("username").asText("");
                 lastError = "";
+                backoffSec = 2;
                 LOG.info("telegram бот @{} готов", botUsername);
             } else {
                 lastError = "getMe: " + root.path("description").asText("fail");
                 LOG.warn("telegram getMe: {}", lastError);
             }
         } catch (Exception ex) {
+            resetClient();
             lastError = "getMe: " + ex.getMessage();
             LOG.warn("telegram getMe: {}", lastError);
         }
@@ -205,13 +212,53 @@ public class TelegramNotifier {
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();
-        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> response = client().send(request, HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() >= 400) {
             throw new IllegalStateException("HTTP " + response.statusCode() + " " + response.body());
         }
         JsonNode root = mapper.readTree(response.body());
         if (!root.path("ok").asBoolean(false)) {
             throw new IllegalStateException(root.path("description").asText("send failed"));
+        }
+    }
+
+    private HttpClient client() {
+        synchronized (clientLock) {
+            if (http == null) {
+                http = newClient();
+            }
+            return http;
+        }
+    }
+
+    private void resetClient() {
+        synchronized (clientLock) {
+            http = newClient();
+        }
+    }
+
+    private static HttpClient newClient() {
+        return HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(8))
+                .followRedirects(HttpClient.Redirect.NORMAL)
+                .build();
+    }
+
+    private int nextBackoffMs(Exception ex) {
+        boolean connect = ex instanceof HttpConnectTimeoutException
+                || ex instanceof HttpTimeoutException
+                || (ex.getMessage() != null && ex.getMessage().toLowerCase().contains("timed out"));
+        int current = backoffSec;
+        backoffSec = connect ? Math.min(30, Math.max(3, current * 2)) : 3;
+        return current * 1000;
+    }
+
+    private static void sleepQuiet(int millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
         }
     }
 

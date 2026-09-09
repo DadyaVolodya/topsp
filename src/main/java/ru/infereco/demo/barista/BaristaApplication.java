@@ -13,6 +13,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 public class BaristaApplication {
 
     public static void main(String[] args) {
+        System.setProperty("java.net.preferIPv4Addresses", "true");
         SpringApplication.run(BaristaApplication.class, args);
     }
 }
