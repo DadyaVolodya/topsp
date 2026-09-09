@@ -47,9 +47,22 @@ public class SpecVersionStore {
     }
 
     public synchronized void saveChanges(String documentId, List<SpecChange> items) {
-        List<SpecChange> copy = items == null ? List.of() : List.copyOf(items);
-        changes.put(documentId, new ArrayList<>(copy));
-        write(dir(documentId).resolve("changes.json"), copy);
+        List<SpecChange> incoming = items == null ? List.of() : List.copyOf(items);
+        List<SpecChange> existing = new ArrayList<>(changes.getOrDefault(documentId, List.of()));
+        if (!incoming.isEmpty()) {
+            // один batch = один toVersion; повторный analyze той же пары заменяет batch, прошлые пары остаются
+            int toVersion = incoming.getFirst().toVersion();
+            existing.removeIf(change -> change.toVersion() == toVersion);
+            existing.addAll(incoming);
+        } else {
+            existing = new ArrayList<>();
+        }
+        existing.sort(Comparator
+                .comparingInt(SpecChange::toVersion)
+                .thenComparingInt(SpecChange::fromVersion)
+                .thenComparing(SpecChange::sectionPath, Comparator.nullsLast(String::compareTo)));
+        changes.put(documentId, existing);
+        write(dir(documentId).resolve("changes.json"), existing);
     }
 
     public synchronized void saveLinks(String documentId, List<RequirementCodeLink> items) {

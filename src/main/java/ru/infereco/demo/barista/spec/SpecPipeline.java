@@ -224,6 +224,18 @@ public class SpecPipeline {
                 .toList();
     }
 
+    /** Только diff последней пары версий (для #sp / #task). */
+    public List<SpecChange> latestChanges(String documentId, boolean includeUnchanged) {
+        SpecVersionSnap current = store.latest(documentId);
+        if (current == null) {
+            return List.of();
+        }
+        int to = current.version();
+        return changes(documentId, includeUnchanged).stream()
+                .filter(change -> change.toVersion() == to)
+                .toList();
+    }
+
     public SpecChange change(String documentId, String changeId) {
         return store.change(documentId, changeId);
     }
@@ -306,7 +318,7 @@ public class SpecPipeline {
             return "Есть только одна версия СП («" + current.fileName() + "» v" + current.version()
                     + "). Загрузите новое СП, чтобы увидеть изменения.";
         }
-        List<SpecChange> changes = changes(id, false);
+        List<SpecChange> changes = latestChanges(id, false);
         if (changes.isEmpty()) {
             return "Между v" + previous.version() + " и v" + current.version() + " значимых изменений нет.";
         }
@@ -347,7 +359,7 @@ public class SpecPipeline {
         if (current == null) {
             return "Нет версий СП.";
         }
-        List<SpecChange> changes = changes(id, false);
+        List<SpecChange> changes = latestChanges(id, false);
         if (changes.isEmpty()) {
             return "Изменений нет. Сначала загрузите пару СП или #sp2, затем #sp.";
         }

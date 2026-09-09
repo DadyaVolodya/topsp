@@ -49,9 +49,14 @@ public class ProductBrief {
             if (overview.lastNotice() != null && !overview.lastNotice().isBlank()) {
                 out.append("Последний notice:\n").append(clip(overview.lastNotice(), 900)).append('\n');
             }
-            List<SpecChange> changes = pipeline.changes(overview.documentId(), false);
+            List<SpecChange> all = pipeline.changes(overview.documentId(), false);
+            List<SpecChange> changes = pipeline.latestChanges(overview.documentId(), false);
+            if (!all.isEmpty()) {
+                out.append("История изменений: ").append(all.size())
+                        .append(", в последней паре версий: ").append(changes.size()).append(".\n");
+            }
             if (!changes.isEmpty()) {
-                out.append("Изменения (top):\n");
+                out.append("Изменения последней пары (top):\n");
                 for (SpecChange change : changes.stream().limit(4).toList()) {
                     out.append("- [").append(change.significance()).append("] ")
                             .append(change.sectionPath()).append(": ")

@@ -69,8 +69,10 @@ public class CopilotController {
         SpecVersionSnap latest = pipeline.versions(documentId).isEmpty()
                 ? null
                 : pipeline.versions(documentId).getLast();
-        int from = items.isEmpty() ? 0 : items.getFirst().fromVersion();
-        int to = items.isEmpty() ? (latest == null ? 0 : latest.version()) : items.getFirst().toVersion();
+        int from = items.stream().mapToInt(SpecChange::fromVersion).min()
+                .orElse(0);
+        int to = items.stream().mapToInt(SpecChange::toVersion).max()
+                .orElse(latest == null ? 0 : latest.version());
         return new ChangesResponse(
                 latest == null ? documentId : latest.fileName(),
                 documentId,
