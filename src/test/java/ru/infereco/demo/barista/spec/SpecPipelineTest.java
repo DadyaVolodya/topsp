@@ -58,7 +58,7 @@ class SpecPipelineTest {
     private static SpecPipeline pipeline(Path dir) {
         MeetProperties properties = props(dir);
         MetricsRegistry metrics = new MetricsRegistry();
-        InferecoClient client = new InferecoClient("", "http://127.0.0.1");
+        InferecoClient client = new InferecoClient("", "http://127.0.0.1", properties);
         SpecVersionStore store = new SpecVersionStore(dir.resolve("versions"), new ObjectMapper());
         return new SpecPipeline(
                 store,
@@ -79,6 +79,7 @@ class SpecPipelineTest {
                 null,
                 new MeetProperties.Specs(dir.toString(), dir.toString(), "заявка.md"),
                 new MeetProperties.Telegram("", ""),
+                null,
                 null);
     }
 }

@@ -104,3 +104,12 @@ meet:
     dirs:
       - demo/code/petclinic-front
       - demo/code/petclinic-back
+  ollama:
+    enabled: true
+    # Локально без ключа: http://localhost:11434/v1 + `ollama pull llama3.2`
+    # Cloud free key: https://ollama.com/v1 + ключ с https://ollama.com/settings/keys
+    base-url: ${OLLAMA_BASE_URL:http://localhost:11434/v1}
+    api-key: ${OLLAMA_API_KEY:}
+    chat: ${OLLAMA_CHAT_MODEL:llama3.2}
+    fast: ${OLLAMA_FAST_MODEL:llama3.2}
+    vision: ${OLLAMA_VISION_MODEL:llava}

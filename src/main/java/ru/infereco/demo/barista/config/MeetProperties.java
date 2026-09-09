@@ -19,7 +19,8 @@ public record MeetProperties(
         Stt stt,
         Specs specs,
         Telegram telegram,
-        Code code
+        Code code,
+        Ollama ollama
 ) {
     public record Models(String chat, String critic, String fast, String vision) {
     }
@@ -59,6 +60,10 @@ public record MeetProperties(
     }
 
     public record Code(List<String> dirs) {
+    }
+
+    /** Fallback LLM: локальный Ollama или cloud с бесплатным ключом ollama.com/settings/keys. */
+    public record Ollama(Boolean enabled, String baseUrl, String apiKey, String chat, String fast, String vision) {
     }
 
     public String fullSystemPrompt() {

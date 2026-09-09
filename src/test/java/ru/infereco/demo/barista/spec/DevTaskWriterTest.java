@@ -17,7 +17,7 @@ class DevTaskWriterTest {
                 null, null, null, null, null,
                 null, null,
                 new MeetProperties.Specs(dir.resolve("sp").toString(), dir.toString(), null),
-                null, null);
+                null, null, null);
         DevTaskWriter writer = new DevTaskWriter(properties);
 
         Path file = writer.write("карта.docx", "СП изменена", "Поиск по названию.");

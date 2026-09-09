@@ -43,7 +43,7 @@ class SkillRouterTest {
                 new ru.infereco.demo.barista.config.MeetProperties.Demo(
                         new ru.infereco.demo.barista.config.MeetProperties.Pto(
                                 "http://localhost:8080", "http://localhost:8080/api", "demo", "secret")),
-                null, null, null, null);
+                null, null, null, null, null);
         Skill filled = SkillCatalog.fill(raw, properties);
         assertThat(filled.body()).contains("http://localhost:8080", "demo");
     }

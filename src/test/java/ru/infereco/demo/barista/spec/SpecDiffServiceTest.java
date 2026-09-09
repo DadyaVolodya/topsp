@@ -49,7 +49,7 @@ class SpecDiffServiceTest {
     }
 
     private static SpecDiffService service() {
-        return new SpecDiffService(new InferecoClient("", "http://127.0.0.1"), props());
+        return new SpecDiffService(new InferecoClient("", "http://127.0.0.1", props()), props());
     }
 
     private static SpecVersionSnap snap(int version, List<SpecSection> sections) {
@@ -62,6 +62,6 @@ class SpecDiffServiceTest {
                 new MeetProperties.Models("m", "c", "glm-5.3", "v"),
                 null, null, null, null, null, null,
                 new MeetProperties.Specs("/tmp", "/tmp", "demo.md"),
-                null, null);
+                null, null, null);
     }
 }

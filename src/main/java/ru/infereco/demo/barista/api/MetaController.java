@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import ru.infereco.demo.barista.chat.InferecoClient;
 import ru.infereco.demo.barista.config.MeetProperties;
 import ru.infereco.demo.barista.knowledge.KnowledgeCatalog;
 import ru.infereco.demo.barista.metrics.MetricsRegistry;
@@ -24,19 +25,27 @@ public class MetaController {
     private final MeetProperties properties;
     private final VoskSttService stt;
     private final SkillCatalog skills;
+    private final InferecoClient llm;
 
     public MetaController(
             MetricsRegistry metrics,
             KnowledgeCatalog knowledge,
             MeetProperties properties,
             VoskSttService stt,
-            SkillCatalog skills
+            SkillCatalog skills,
+            InferecoClient llm
     ) {
         this.metrics = metrics;
         this.knowledge = knowledge;
         this.properties = properties;
         this.stt = stt;
         this.skills = skills;
+        this.llm = llm;
+    }
+
+    @GetMapping("/llm")
+    public InferecoClient.StatusView llm() {
+        return llm.status();
     }
 
     @GetMapping("/health")

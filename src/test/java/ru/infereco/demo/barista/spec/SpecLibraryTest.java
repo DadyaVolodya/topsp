@@ -17,7 +17,7 @@ class SpecLibraryTest {
                 null, null, null, null, null,
                 null, null,
                 new MeetProperties.Specs("/tmp", "/tmp", "карта.docx"),
-                null, null);
+                null, null, null);
         SpecLibrary library = new SpecLibrary(
                 properties,
                 new KnowledgeCatalog(new MetricsRegistry()),

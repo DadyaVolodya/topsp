@@ -13,10 +13,11 @@ Java 25+, Maven Wrapper.
 ```bash
 cp config/application-local.yml.example config/application-local.yml
 # ключ Infereco: spring.ai.openai.api-key
+# fallback Ollama Cloud: meet.ollama (ключ https://ollama.com/settings/keys) в application-local.yml
 ./mvnw spring-boot:run
 ```
 
-База: `http://localhost:8080`
+База: `http://localhost:8080`. Статус LLM: `GET /api/llm`.
 
 Демо-контур: Spring PetClinic в `demo/` (СП visits + front/back). Концепция: [docs/CONCEPT.md](docs/CONCEPT.md). Метрики: [docs/PITCH-METRICS.md](docs/PITCH-METRICS.md).
 
