@@ -144,8 +144,11 @@ public class SpecPipeline {
         long taskMs = System.currentTimeMillis() - t2;
         String notice = notice(current, changes, task);
         lastNotice = notice;
-        if (notify && !notice.isBlank()) {
+        if (notify && hasMeaningful(changes) && !notice.isBlank()) {
             telegram.sendAll(notice);
+            for (String card : tasks.telegramCards(current.fileName(), changes)) {
+                telegram.sendAll(card);
+            }
         }
         metrics.recordCopilot(
                 diffMs,
@@ -361,17 +364,16 @@ public class SpecPipeline {
         if (written.isEmpty()) {
             return "Не удалось создать задачи: нет значимых изменений.";
         }
-        StringBuilder out = new StringBuilder("Созданы задания:\n");
+        List<String> cards = tasks.telegramCards(current.fileName(), changes);
+        StringBuilder out = new StringBuilder("Созданы задания (front + back):\n\n");
+        for (String card : cards) {
+            out.append(card).append("\n\n");
+            telegram.sendAll(card);
+        }
         for (Path path : written) {
-            out.append("- ").append(path.getFileName()).append('\n');
-            try {
-                String body = java.nio.file.Files.readString(path);
-                out.append(clip(body, 1600)).append("\n\n");
-            } catch (Exception ignored) {
-            }
+            out.append("файл: ").append(path.getFileName()).append('\n');
         }
         lastNotice = out.toString();
-        telegram.sendAll(out.toString());
         return out.toString();
     }
 
@@ -464,6 +466,18 @@ public class SpecPipeline {
             return "";
         }
         return properties.specs().file().trim();
+    }
+
+    private static boolean hasMeaningful(List<SpecChange> changes) {
+        if (changes == null || changes.isEmpty()) {
+            return false;
+        }
+        return changes.stream()
+                .filter(change -> !change.excluded())
+                .filter(change -> !"unchanged".equals(change.type()))
+                .filter(change -> !"cosmetic".equals(change.significance()))
+                .findAny()
+                .isPresent();
     }
 
     private static int affectedFiles(List<SpecChange> changes) {

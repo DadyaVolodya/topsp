@@ -208,6 +208,29 @@ async function api(path, options, timeoutMs) {
   }
 }
 
+async function ensureSession() {
+  if (sessionId) {
+    try {
+      await api(`/api/sessions/${sessionId}`);
+      return sessionId;
+    } catch (_) {
+      sessionId = null;
+    }
+  }
+  const session = await api("/api/sessions", { method: "POST" });
+  sessionId = session.id;
+  renderSession(session);
+  if (statusEl) {
+    statusEl.textContent = "сессия обновлена после перезапуска бэка";
+  }
+  return sessionId;
+}
+
+function isSessionLost(err) {
+  const text = err && err.message ? err.message : String(err || "");
+  return /session not found/i.test(text);
+}
+
 async function refreshMeta() {
   const [metrics, knowledge, specs, tasks, code, telegram] = await Promise.all([
     api("/api/metrics"),
@@ -498,17 +521,31 @@ function bootDoom() {
 }
 
 async function sendText(text, source, shown, tab) {
-  if (!sessionId || !text.trim()) return;
+  if (!text.trim()) return;
+  await ensureSession();
+  if (!sessionId) return;
   input.value = "";
   if (!shown) {
     addMessage({ role: "user", text, source, latencyMs: null });
   }
   statusEl.textContent = doomMode ? "напарник отвечает..." : "модель отвечает...";
-  const msg = await api(`/api/sessions/${sessionId}/messages`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, source }),
-  }, 35000);
+  let msg;
+  try {
+    msg = await api(`/api/sessions/${sessionId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, source }),
+    }, 35000);
+  } catch (err) {
+    if (!isSessionLost(err)) throw err;
+    sessionId = null;
+    await ensureSession();
+    msg = await api(`/api/sessions/${sessionId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, source }),
+    }, 35000);
+  }
   addMessage(msg, { tab, fromUser: true });
   const cheat = extractCheat(msg.text);
   if (cheat && doomMode && gameStatus) {
