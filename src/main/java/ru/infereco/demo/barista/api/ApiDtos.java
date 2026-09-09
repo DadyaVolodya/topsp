@@ -23,13 +23,13 @@ public final class ApiDtos {
         }
     }
 
-    public record SessionResponse(UUID id, String skill, Instant createdAt, List<MessageResponse> messages) {
+    public record SessionResponse(UUID id, String skill, Instant createdAt, List<MessageResponse> messages, ru.infereco.demo.barista.chat.ChatContext context) {
         public static SessionResponse from(ChatSession session) {
             return new SessionResponse(
                     session.id(),
                     session.skill(),
                     session.createdAt(),
-                    session.messages().stream().map(message -> MessageResponse.from(message, session.skill())).toList());
+                    session.messages().stream().map(message -> MessageResponse.from(message, session.skill())).toList(), session.context());
         }
     }
 

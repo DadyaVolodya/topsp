@@ -378,6 +378,13 @@ public class SpecPipeline {
         return out.toString();
     }
 
+    public synchronized String createChangeTasks(String fileName, SpecChange change) {
+        List<Path> written = tasks.writeFrontAndBack(fileName, List.of(change));
+        if (written.isEmpty()) return "Нет значимых изменений для создания задач.";
+        return "Созданы задачи по изменению " + change.id() + ":\n"
+                + written.stream().map(path -> path.getFileName().toString()).collect(java.util.stream.Collectors.joining("\n"));
+    }
+
     private static void appendImpactLines(StringBuilder out, List<SpecChange.AffectedCode> items) {
         if (items == null || items.isEmpty()) {
             out.append("    - уверенной связи не найдено\n");

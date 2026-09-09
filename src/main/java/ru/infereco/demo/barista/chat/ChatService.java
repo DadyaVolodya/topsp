@@ -78,6 +78,20 @@ public class ChatService {
         return session;
     }
 
+    public synchronized ChatSession open(String documentId, String changeId) {
+        String doc = documentId == null || documentId.isBlank() ? null : documentId;
+        String change = changeId == null || changeId.isBlank() ? null : changeId;
+        if ((doc == null) != (change == null)) throw new IllegalArgumentException("Нужны documentId и changeId");
+        var existing = store.findContext(doc, change);
+        if (existing.isPresent()) return existing.get();
+        if (doc == null) return start();
+        var selected = pipeline.change(doc, change);
+        if (selected == null) throw new IllegalArgumentException("Изменение не найдено");
+        ChatSession session = store.create(new ChatContext(doc, change, pipeline.overview(doc).fileName(), selected));
+        session.add("assistant", "Обсуждение изменения: " + selected.heading(), "system", null);
+        return session;
+    }
+
     public ChatSession enterDoom(UUID sessionId) {
         ChatSession session = store.require(sessionId);
         if (!session.doom()) {
@@ -113,7 +127,7 @@ public class ChatService {
 
         if (!session.doom()
                 && "topsp".equals(session.skill())
-                && !hasSpecContext()) {
+                && session.context() == null && !hasSpecContext()) {
             return finishLocal(
                     session,
                     "Нет загруженной СП PetClinic. Введите #sp1 (базовая), потом #sp2 (изменение), либо загрузите .md. "
@@ -123,7 +137,7 @@ public class ChatService {
         List<KnowledgeDoc> retrieved = knowledge.retrieve(queryFor(session, incoming), session.doom() ? 3 : 6);
         String ragContext = knowledge.formatForPrompt(retrieved);
         if ("topsp".equals(session.skill()) || "hint".equals(session.skill())) {
-            String brief = productBrief.forTopSp(incoming);
+            String brief = session.context() == null ? productBrief.forTopSp(incoming) : session.context().describe();
             ragContext = brief + (ragContext == null || ragContext.isBlank() ? "" : "\n" + ragContext);
         }
 
@@ -150,6 +164,9 @@ public class ChatService {
     }
 
     private ChatMessage handleHash(ChatSession session, String hash, String incoming) {
+        if (session.context() != null && List.of("sp1", "sp2", "doom").contains(hash)) {
+            return finishLocal(session, "Эта команда доступна в общем чате. Контекст изменения сохранён.");
+        }
         return switch (hash) {
             case "doom" -> {
                 enterDoom(session.id());
@@ -178,11 +195,12 @@ public class ChatService {
             }
             case "sp" -> {
                 session.setSkill("topsp");
-                yield finishLocal(session, pipeline.describeImpact(null));
+                yield finishLocal(session, session.context() == null ? pipeline.describeImpact(null) : session.context().describe());
             }
             case "task" -> {
                 session.setSkill("topsp");
-                yield finishLocal(session, pipeline.createFrontBackTasks(null));
+                yield finishLocal(session, session.context() == null ? pipeline.createFrontBackTasks(null)
+                        : pipeline.createChangeTasks(session.context().fileName(), session.context().change()));
             }
             default -> null;
         };
@@ -344,6 +362,7 @@ public class ChatService {
         if (session.hasScreen()) {
             prompt = "Сейчас на экране:\n" + session.screenBrief() + "\n\n" + prompt;
         }
+        if (session.context() != null) prompt = "Контекст выбранного изменения (снимок на момент открытия чата):\n" + session.context().describe() + "\n" + prompt;
         String system = session.doom() ? properties.fullDoomSystemPrompt() : chatSystem(session);
         return infereco.complete(
                 model,
@@ -356,6 +375,7 @@ public class ChatService {
 
     private String queryFor(ChatSession session, String text) {
         String base = text == null ? "" : text;
+        if (session.context() != null) base = session.context().change().heading() + " " + base;
         String hint = skills.retrieveHint(session.skill());
         return hint.isBlank() ? base : hint + " " + base;
     }

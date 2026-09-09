@@ -28,6 +28,14 @@ public class SessionController {
         return ApiDtos.CreateSessionResponse.from(chatService.start(), properties.topic());
     }
 
+    public record OpenSessionRequest(String documentId, String changeId) {}
+
+    @PostMapping("/open")
+    public ApiDtos.SessionResponse open(@RequestBody(required = false) OpenSessionRequest request) {
+        return ApiDtos.SessionResponse.from(chatService.open(
+                request == null ? null : request.documentId(), request == null ? null : request.changeId()));
+    }
+
     @GetMapping("/{id}")
     public ApiDtos.SessionResponse get(@PathVariable UUID id) {
         return ApiDtos.SessionResponse.from(chatService.get(id));
