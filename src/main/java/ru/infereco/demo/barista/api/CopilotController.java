@@ -225,8 +225,8 @@ public class CopilotController {
                     change.newBehavior(),
                     change.businessImpact(),
                     change.requiresCodeChange(),
-                    clip(change.oldText(), clip),
-                    clip(change.newText(), clip),
+                    change.oldText(),
+                    change.newText(),
                     change.excluded(),
                     change.affected() == null ? List.of() : change.affected(),
                     change.navigation());
