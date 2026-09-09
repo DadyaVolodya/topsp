@@ -140,11 +140,12 @@ public class SpecPipeline {
         store.saveChanges(documentId, changes);
         store.saveLinks(documentId, links);
         long t2 = System.currentTimeMillis();
-        Path task = notify ? tasks.write(current.fileName(), changes) : null;
+        boolean meaningful = hasMeaningful(changes);
+        Path task = notify && meaningful ? tasks.write(current.fileName(), changes) : null;
         long taskMs = System.currentTimeMillis() - t2;
         String notice = notice(current, changes, task);
         lastNotice = notice;
-        if (notify && hasMeaningful(changes) && !notice.isBlank()) {
+        if (notify && meaningful && !notice.isBlank()) {
             telegram.sendAll(notice);
             for (String card : tasks.telegramCards(current.fileName(), changes)) {
                 telegram.sendAll(card);
@@ -472,12 +473,7 @@ public class SpecPipeline {
         if (changes == null || changes.isEmpty()) {
             return false;
         }
-        return changes.stream()
-                .filter(change -> !change.excluded())
-                .filter(change -> !"unchanged".equals(change.type()))
-                .filter(change -> !"cosmetic".equals(change.significance()))
-                .findAny()
-                .isPresent();
+        return changes.stream().anyMatch(TaskGenerationService::actionable);
     }
 
     private static int affectedFiles(List<SpecChange> changes) {

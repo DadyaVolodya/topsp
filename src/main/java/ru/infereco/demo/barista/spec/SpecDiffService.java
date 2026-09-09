@@ -93,34 +93,68 @@ public class SpecDiffService {
             if (pair == null) {
                 continue;
             }
+            boolean policy = policyShift(change.oldText(), change.newText());
             Draft llm = askLlm(pair.oldSection(), pair.newSection(), pair.neighbors(), change.type());
             if (llm == null) {
                 continue;
             }
             llmLeft -= 1;
             if ("unchanged".equals(llm.type) || "cosmetic".equals(llm.significance)) {
+                // эвристика «запрещено/можно» важнее мнения модели
+                if (policy) {
+                    continue;
+                }
                 changes.remove(i);
                 i -= 1;
                 continue;
+            }
+            String significance = llm.significance == null || llm.significance.isBlank()
+                    ? change.significance()
+                    : llm.significance.toLowerCase(Locale.ROOT);
+            if (policy && rank(significance) < rank(change.significance())) {
+                significance = change.significance();
+            }
+            String type = llm.type == null || llm.type.isBlank() ? change.type() : llm.type.toLowerCase(Locale.ROOT);
+            if (policy && ("unchanged".equals(type) || "cosmetic".equals(type))) {
+                type = change.type();
             }
             changes.set(i, SpecChange.create(
                     change.id(),
                     change.documentId(),
                     change.fromVersion(),
                     change.toVersion(),
-                    llm.type,
-                    llm.significance,
+                    type,
+                    significance,
                     change.sectionPath(),
                     change.heading(),
                     llm.summary.isBlank() ? change.summary() : llm.summary,
                     llm.oldBehavior.isBlank() ? change.oldBehavior() : llm.oldBehavior,
                     llm.newBehavior.isBlank() ? change.newBehavior() : llm.newBehavior,
                     llm.businessImpact.isBlank() ? change.businessImpact() : llm.businessImpact,
-                    llm.requiresCodeChange,
+                    policy || llm.requiresCodeChange,
                     change.oldText(),
                     change.newText(),
                     change.navigation()));
         }
+    }
+
+    static boolean policyShift(String oldText, String newText) {
+        String grade = significanceOf(oldText, newText);
+        return "high".equals(grade) || "critical".equals(grade);
+    }
+
+    private static int rank(String significance) {
+        if (significance == null) {
+            return 0;
+        }
+        return switch (significance.toLowerCase(Locale.ROOT)) {
+            case "critical" -> 5;
+            case "high" -> 4;
+            case "medium" -> 3;
+            case "low" -> 2;
+            case "cosmetic" -> 1;
+            default -> 0;
+        };
     }
 
     private static Pair pairOf(List<Pair> pairs, String path) {
@@ -345,6 +379,7 @@ public class SpecDiffService {
                     "summary":"...","oldBehavior":"...","newBehavior":"...","businessImpact":"...","requiresCodeChange":true}
                     Переформулировка без смены смысла = unchanged или cosmetic.
                     Замена «может» на «обязан» = high и requiresCodeChange true.
+                    Смена «не может/нельзя/запрещено» на «может/можно» (или обратно) = high или critical, никогда low/cosmetic.
                     """;
             String user = "Тип-подсказка: " + fallbackType
                     + "\nСоседи:\n" + clip(neighbors, 400)

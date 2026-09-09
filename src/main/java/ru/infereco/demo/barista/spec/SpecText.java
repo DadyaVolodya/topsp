@@ -49,7 +49,7 @@ public final class SpecText {
         } else {
             return "";
         }
-        text = text.replace('\u0000', ' ').replaceAll("[ \\t]+", " ").trim();
+        text = normalize(text);
         if (looksLikeRawMarkup(text)) {
             return "";
         }
@@ -57,6 +57,18 @@ public final class SpecText {
             return text.substring(0, MAX_CHARS);
         }
         return text;
+    }
+
+    /** Единый вид текста СП: без \\r, без хвостовых пробелов, без нулей. */
+    public static String normalize(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        return text.replace("\r\n", "\n")
+                .replace('\r', '\n')
+                .replace('\u0000', ' ')
+                .replaceAll("[ \\t]+", " ")
+                .strip();
     }
 
     static String fromDocx(byte[] bytes) throws IOException {

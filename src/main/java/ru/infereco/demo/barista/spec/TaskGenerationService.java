@@ -51,12 +51,83 @@ public class TaskGenerationService {
         return out;
     }
 
+    /** Plain-text cards for Telegram: тема / описание / - / _ */
+    public List<String> telegramCards(String fileName, List<SpecChange> changes) {
+        List<SpecChange> meaningful = meaningful(changes);
+        if (meaningful.isEmpty()) {
+            return List.of();
+        }
+        String theme = titleOf(meaningful);
+        return List.of(
+                telegramCard("Frontend: " + theme, meaningful, "front"),
+                telegramCard("Backend: " + theme, meaningful, "back"));
+    }
+
+    public String telegramCard(String theme, List<SpecChange> changes, String side) {
+        StringBuilder out = new StringBuilder();
+        out.append("тема: ").append(theme == null || theme.isBlank() ? "задача по СП" : theme).append('\n');
+        out.append("описание:\n");
+        for (SpecChange change : changes) {
+            String summary = change.summary() == null || change.summary().isBlank()
+                    ? change.sectionPath()
+                    : change.summary();
+            out.append("- ").append(clip(summary, 180)).append('\n');
+            out.append("- было: ").append(clip(empty(change.oldBehavior(), change.oldText()), 160)).append('\n');
+            out.append("- стало: ").append(clip(empty(change.newBehavior(), change.newText()), 160)).append('\n');
+            List<SpecChange.AffectedCode> items = change.affected() == null ? List.of() : change.affected().stream()
+                    .filter(item -> {
+                        boolean front = CodeImpactService.frontend(item.repo(), item.path());
+                        if ("front".equals(side)) {
+                            return front;
+                        }
+                        if ("back".equals(side)) {
+                            return !front;
+                        }
+                        return true;
+                    })
+                    .toList();
+            if (items.isEmpty()) {
+                out.append("- код: уверенной связи не найдено\n");
+            } else {
+                for (SpecChange.AffectedCode item : items) {
+                    out.append("- ")
+                            .append(item.path() == null ? "?" : item.path())
+                            .append(" :: ")
+                            .append(item.symbol() == null ? "?" : item.symbol())
+                            .append('\n');
+                }
+            }
+        }
+        out.append('_');
+        return out.toString();
+    }
+
+    private static String clip(String text, int max) {
+        if (text == null) {
+            return "";
+        }
+        String clean = text.replace('\n', ' ').replaceAll("\\s+", " ").trim();
+        return clean.length() <= max ? clean : clean.substring(0, max) + "…";
+    }
+
     private static List<SpecChange> meaningful(List<SpecChange> changes) {
         return (changes == null ? List.<SpecChange>of() : changes).stream()
                 .filter(change -> !change.excluded())
                 .filter(change -> !"unchanged".equals(change.type()))
-                .filter(change -> !"cosmetic".equals(change.significance()))
+                .filter(TaskGenerationService::actionable)
                 .toList();
+    }
+
+    /** critical / high / medium - low и cosmetic не создают задачи и не уходят в Telegram. */
+    public static boolean actionable(SpecChange change) {
+        if (change == null || change.excluded()) {
+            return false;
+        }
+        if ("unchanged".equals(change.type())) {
+            return false;
+        }
+        String value = change.significance() == null ? "" : change.significance().toLowerCase(Locale.ROOT);
+        return "critical".equals(value) || "high".equals(value) || "medium".equals(value);
     }
 
     private static String titleOf(List<SpecChange> changes) {

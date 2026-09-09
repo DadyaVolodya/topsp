@@ -172,11 +172,12 @@ public class SpecLibrary {
         if (fileName == null || fileName.isBlank() || text == null) {
             throw new IllegalArgumentException("нужны имя файла и текст СП");
         }
+        String clean = SpecText.normalize(text);
         Path root = dir();
         try {
             Files.createDirectories(root);
             Path target = root.resolve(fileName);
-            Files.writeString(target, text);
+            Files.writeString(target, clean.endsWith("\n") ? clean : clean + "\n");
             fingerprints.remove(fileName);
             reload(target, notify);
         } catch (Exception ex) {

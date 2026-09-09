@@ -15,11 +15,11 @@ API: `VisitController` `/api/pets/{petId}/visits`, правила в `VisitServi
 
 ## 3.2 Отмена и правка описания визита
 
-После создания визита владелец не может отменить визит.
-После создания визита описание визита нельзя редактировать.
-Кнопка Cancel visit на фронте всегда disabled.
-Методы `VisitService.canCancel` и `VisitService.canEditDescription` возвращают false.
-`PUT /api/pets/{petId}/visits/{visitId}` и `DELETE` отвечают конфликтом, если визит уже создан.
+После создания визита владелец может отменить визит, если до даты визита осталось не меньше 24 часов.
+Описание визита можно редактировать, пока дата визита ещё в будущем (до наступления дня визита).
+На фронте `VisitRow`: кнопка Cancel visit и поле description управляются флагами `canCancel` и `canEditDescription`.
+На backend `VisitService.canCancel` и `VisitService.canEditDescription` реализуют эти правила; `VisitController` вызывает update/cancel.
+Если правило нарушено, API отвечает конфликтом (HTTP 409).
 
 ## 4. Просмотр
 
