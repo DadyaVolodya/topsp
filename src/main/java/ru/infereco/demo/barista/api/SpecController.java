@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import ru.infereco.demo.barista.code.CodeChunk;
 import ru.infereco.demo.barista.code.CodeLibrary;
 import ru.infereco.demo.barista.spec.DevTaskWriter;
 import ru.infereco.demo.barista.spec.SpecLibrary;
@@ -107,8 +108,16 @@ public class SpecController {
     }
 
     @GetMapping("/code")
-    public CodeResponse code() {
-        return new CodeResponse(code.files(), code.chunks(), code.symbols(), code.lastChange(), code.list());
+    public CodeResponse code(@RequestParam(defaultValue = "40") int limit) {
+        List<CodeChunk> items = code.preview(limit);
+        return new CodeResponse(
+                code.files(),
+                code.chunks(),
+                code.symbols(),
+                items.size(),
+                code.lastChange(),
+                code.list(),
+                items);
     }
 
     public record SpecsResponse(
@@ -133,8 +142,10 @@ public class SpecController {
             int files,
             long chunks,
             int symbols,
+            int shown,
             Instant lastChange,
-            List<CodeLibrary.CodeView> roots
+            List<CodeLibrary.CodeView> roots,
+            List<CodeChunk> items
     ) {
     }
 }

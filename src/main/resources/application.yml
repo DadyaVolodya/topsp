@@ -102,5 +102,5 @@ meet:
     chat-id: ${TELEGRAM_CHAT_ID:}
   code:
     dirs:
-      - /Users/sparrow/Documents/moi_llm_ne_tvoi_llm/barista-rag/demo/code/petclinic-front
-      - /Users/sparrow/Documents/moi_llm_ne_tvoi_llm/barista-rag/demo/code/petclinic-back
+      - demo/code/petclinic-front
+      - demo/code/petclinic-back

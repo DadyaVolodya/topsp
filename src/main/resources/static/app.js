@@ -278,7 +278,7 @@ async function refreshMeta() {
   const codeEl = document.getElementById("code");
   if (codeStatus) {
     codeStatus.textContent = code.files
-      ? `${code.files} исходников, ${code.chunks} кусков`
+      ? `${code.files} исходников, ${code.chunks} кусков, ${code.symbols || 0} символов`
       : "код ещё грузится";
   }
   if (codeEl) {
@@ -286,6 +286,11 @@ async function refreshMeta() {
     (code.roots || []).forEach((root) => {
       const li = document.createElement("li");
       li.textContent = root.exists ? root.name : `${root.name} (нет папки)`;
+      codeEl.append(li);
+    });
+    (code.items || []).slice(0, 12).forEach((item) => {
+      const li = document.createElement("li");
+      li.textContent = `${item.repo || "?"} · ${item.symbol || "?"} (${item.path || ""})`;
       codeEl.append(li);
     });
   }

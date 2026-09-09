@@ -47,11 +47,56 @@ public class CodeImpactService {
         if (mixed.isEmpty()) {
             mixed.addAll(code.search(query, "", 4));
         }
+        // Если индекс пуст/слаб, всё равно тянем символы, явно названные в СП.
+        for (CodeChunk named : namedFromSpec(change)) {
+            if (!containsChunk(mixed, named)) {
+                mixed.add(named);
+            }
+        }
         List<SpecChange.AffectedCode> items = fallback(mixed);
-        if (items.size() > 4) {
-            return List.copyOf(items.subList(0, 4));
+        if (items.isEmpty()) {
+            return List.of();
+        }
+        if (items.size() > 6) {
+            return List.copyOf(items.subList(0, 6));
         }
         return items;
+    }
+
+    private List<CodeChunk> namedFromSpec(SpecChange change) {
+        String hay = (nullToEmpty(change.oldText()) + "\n" + nullToEmpty(change.newText())
+                + "\n" + nullToEmpty(change.oldBehavior()) + "\n" + nullToEmpty(change.newBehavior())
+                + "\n" + nullToEmpty(change.summary())).toLowerCase(Locale.ROOT);
+        String[] names = {
+                "cancancel", "caneditdescription", "visitrow", "petvisitspage", "visitsapi",
+                "visitservice", "visitcontroller", "ownercontroller"
+        };
+        List<CodeChunk> out = new ArrayList<>();
+        for (String name : names) {
+            if (!hay.contains(name)) {
+                continue;
+            }
+            for (CodeChunk chunk : code.search(name, "", 3)) {
+                String symbol = chunk.symbol() == null ? "" : chunk.symbol().toLowerCase(Locale.ROOT);
+                String path = chunk.path() == null ? "" : chunk.path().toLowerCase(Locale.ROOT);
+                if (symbol.contains(name) || path.contains(name) || name.contains(symbol)) {
+                    if (!containsChunk(out, chunk)) {
+                        out.add(chunk);
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
+    private static boolean containsChunk(List<CodeChunk> items, CodeChunk chunk) {
+        for (CodeChunk item : items) {
+            if (item.path() != null && item.path().equals(chunk.path())
+                    && item.symbol() != null && item.symbol().equals(chunk.symbol())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     static String queryOf(SpecChange change) {

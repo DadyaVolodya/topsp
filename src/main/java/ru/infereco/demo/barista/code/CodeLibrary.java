@@ -48,13 +48,24 @@ public class CodeLibrary {
         if (code != null && code.dirs() != null) {
             for (String dir : code.dirs()) {
                 if (dir != null && !dir.isBlank()) {
-                    roots.add(Path.of(dir.trim()));
+                    roots.add(resolveDir(dir.trim()));
+                }
+            }
+        }
+        boolean anyExists = roots.stream().anyMatch(Files::isDirectory);
+        if (!anyExists) {
+            roots.clear();
+            for (String name : List.of("petclinic-front", "petclinic-back")) {
+                Path found = findDemoRepo(name);
+                if (found != null) {
+                    roots.add(found);
                 }
             }
         }
         if (roots.isEmpty()) {
-            roots.add(Path.of("/Users/sparrow/Documents/pto/projects/aisto-front"));
-            roots.add(Path.of("/Users/sparrow/Documents/pto/projects/aisto-pto-back"));
+            Path cwd = Path.of(System.getProperty("user.dir", ".")).toAbsolutePath().normalize();
+            roots.add(cwd.resolve("demo/code/petclinic-front"));
+            roots.add(cwd.resolve("demo/code/petclinic-back"));
         }
         return roots;
     }
@@ -68,6 +79,51 @@ public class CodeLibrary {
                     Files.isDirectory(root)));
         }
         return items;
+    }
+
+    /** Превью символов для GET /api/code (фронт рисует список чанков). */
+    public List<CodeChunk> preview(int limit) {
+        int cap = Math.max(1, Math.min(limit, 100));
+        if (symbols.size() <= cap) {
+            return List.copyOf(symbols);
+        }
+        return List.copyOf(symbols.subList(0, cap));
+    }
+
+    private static Path resolveDir(String dir) {
+        Path raw = Path.of(dir);
+        if (Files.isDirectory(raw)) {
+            return raw.toAbsolutePath().normalize();
+        }
+        Path cwd = Path.of(System.getProperty("user.dir", ".")).toAbsolutePath().normalize();
+        if (!raw.isAbsolute()) {
+            Path underCwd = cwd.resolve(raw).normalize();
+            if (Files.isDirectory(underCwd)) {
+                return underCwd;
+            }
+        }
+        String name = raw.getFileName() == null ? "" : raw.getFileName().toString();
+        if (!name.isBlank()) {
+            Path found = findDemoRepo(name);
+            if (found != null) {
+                return found;
+            }
+        }
+        return raw.isAbsolute() ? raw.normalize() : cwd.resolve(raw).normalize();
+    }
+
+    private static Path findDemoRepo(String name) {
+        Path cwd = Path.of(System.getProperty("user.dir", ".")).toAbsolutePath().normalize();
+        List<Path> candidates = List.of(
+                cwd.resolve("demo/code").resolve(name),
+                cwd.resolve("barista-rag/demo/code").resolve(name),
+                cwd.getParent() == null ? cwd.resolve(name) : cwd.getParent().resolve("barista-rag/demo/code").resolve(name));
+        for (Path candidate : candidates) {
+            if (Files.isDirectory(candidate)) {
+                return candidate.toAbsolutePath().normalize();
+            }
+        }
+        return null;
     }
 
     public Instant lastChange() {
@@ -200,16 +256,19 @@ public class CodeLibrary {
                 hit += 1;
             }
         }
+        String symbol = chunk.symbol() == null ? "" : chunk.symbol().toLowerCase(Locale.ROOT);
+        String path = chunk.path() == null ? "" : chunk.path().toLowerCase(Locale.ROOT);
+        for (String token : tokens) {
+            if (symbol.equals(token) || symbol.contains(token) || path.contains(token)) {
+                hit += 2;
+            }
+        }
         if (hit == 0) {
             return 0;
         }
-        if (hit < 2 && tokens.size() > 2) {
-            return 0;
-        }
         double boost = 0;
-        String path = chunk.path() == null ? "" : chunk.path().toLowerCase(Locale.ROOT);
-        if (path.contains("application") || path.contains("grant") || path.contains("заяв")) {
-            boost += 0.2;
+        if (path.contains("visit") || symbol.contains("cancel") || symbol.contains("edit")) {
+            boost += 0.3;
         }
         return hit + boost;
     }
