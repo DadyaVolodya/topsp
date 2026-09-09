@@ -55,7 +55,7 @@ public class InferecoClient {
             ObjectNode userNode = messages.addObject();
             userNode.put("role", "user");
             userNode.put("content", user);
-            return send(body, model, Duration.ofSeconds(14));
+            return send(body, model, Duration.ofSeconds(45));
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Infereco прервана", ex);

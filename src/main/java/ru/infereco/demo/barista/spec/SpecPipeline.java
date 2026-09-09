@@ -271,9 +271,139 @@ public class SpecPipeline {
         return ids.getFirst();
     }
 
+    public synchronized Overview loadPair(String fileName, String oldText, String newText) {
+        String name = fileName == null || fileName.isBlank() ? "petclinic-visits.md" : fileName.trim();
+        String documentId = SpecSectionParser.documentId(name);
+        store.clearDocument(documentId);
+        store.save(new SpecVersionSnap(
+                documentId, name, 1, fingerprint(oldText), Instant.now().minusSeconds(60).toString(),
+                oldText, SpecSectionParser.parse(oldText)));
+        store.save(new SpecVersionSnap(
+                documentId, name, 2, fingerprint(newText), Instant.now().toString(),
+                newText, SpecSectionParser.parse(newText)));
+        analyze(documentId, true);
+        return overview(documentId);
+    }
+
+    public synchronized String describeImpact(String documentId) {
+        String id = documentId == null || documentId.isBlank() ? primaryDocumentId() : documentId;
+        if (id == null) {
+            return "СП не загружена. Загрузите старое и новое СП или #sp1/#sp2.";
+        }
+        SpecVersionSnap current = store.latest(id);
+        SpecVersionSnap previous = store.previous(id);
+        if (current == null) {
+            return "Нет версий СП.";
+        }
+        if (previous == null) {
+            return "Есть только одна версия СП («" + current.fileName() + "» v" + current.version()
+                    + "). Загрузите новое СП, чтобы увидеть изменения.";
+        }
+        List<SpecChange> changes = changes(id, false);
+        if (changes.isEmpty()) {
+            return "Между v" + previous.version() + " и v" + current.version() + " значимых изменений нет.";
+        }
+        StringBuilder out = new StringBuilder();
+        out.append("СП «").append(current.fileName()).append("»: v")
+                .append(previous.version()).append(" > v").append(current.version()).append(".\n\n");
+        out.append("Что изменилось:\n");
+        for (SpecChange change : changes) {
+            out.append("- [").append(change.significance()).append("] ")
+                    .append(change.sectionPath()).append(": ")
+                    .append(change.summary() == null ? "" : change.summary()).append('\n');
+            out.append("  Было: ").append(clip(empty(change.oldBehavior(), change.oldText()), 220)).append('\n');
+            out.append("  Стало: ").append(clip(empty(change.newBehavior(), change.newText()), 220)).append('\n');
+            List<SpecChange.AffectedCode> front = change.affected() == null ? List.of() : change.affected().stream()
+                    .filter(item -> CodeImpactService.frontend(item.repo(), item.path()))
+                    .toList();
+            List<SpecChange.AffectedCode> back = change.affected() == null ? List.of() : change.affected().stream()
+                    .filter(item -> !CodeImpactService.frontend(item.repo(), item.path()))
+                    .toList();
+            out.append("  Frontend (что менять):\n");
+            appendImpactLines(out, front);
+            out.append("  Backend (что менять):\n");
+            appendImpactLines(out, back);
+            out.append('\n');
+        }
+        out.append("Дальше: #task создаст отдельные задания на front и back.");
+        lastNotice = out.toString();
+        return out.toString();
+    }
+
+    public synchronized String createFrontBackTasks(String documentId) {
+        String id = documentId == null || documentId.isBlank() ? primaryDocumentId() : documentId;
+        if (id == null) {
+            return "СП ещё не загружена.";
+        }
+        SpecVersionSnap current = store.latest(id);
+        if (current == null) {
+            return "Нет версий СП.";
+        }
+        List<SpecChange> changes = changes(id, false);
+        if (changes.isEmpty()) {
+            return "Изменений нет. Сначала загрузите пару СП или #sp2, затем #sp.";
+        }
+        long t0 = System.currentTimeMillis();
+        List<Path> written = tasks.writeFrontAndBack(current.fileName(), changes);
+        long taskMs = System.currentTimeMillis() - t0;
+        metrics.recordCopilot(
+                0,
+                0,
+                taskMs,
+                SpecDiffService.summary(changes).getOrDefault("total", 0),
+                (int) changes.stream().filter(TaskGenerationService::highImpact).count(),
+                affectedFiles(changes),
+                written.size());
+        if (written.isEmpty()) {
+            return "Не удалось создать задачи: нет значимых изменений.";
+        }
+        StringBuilder out = new StringBuilder("Созданы задания:\n");
+        for (Path path : written) {
+            out.append("- ").append(path.getFileName()).append('\n');
+            try {
+                String body = java.nio.file.Files.readString(path);
+                out.append(clip(body, 1600)).append("\n\n");
+            } catch (Exception ignored) {
+            }
+        }
+        lastNotice = out.toString();
+        return out.toString();
+    }
+
+    private static void appendImpactLines(StringBuilder out, List<SpecChange.AffectedCode> items) {
+        if (items == null || items.isEmpty()) {
+            out.append("    - уверенной связи не найдено\n");
+            return;
+        }
+        for (SpecChange.AffectedCode item : items) {
+            out.append("    - ").append(item.repo()).append(" `").append(item.path())
+                    .append("` :: ").append(item.symbol())
+                    .append(" - ").append(item.reason() == null ? "сверить с новой СП" : item.reason())
+                    .append('\n');
+        }
+    }
+
+    private static String empty(String preferred, String fallback) {
+        if (preferred != null && !preferred.isBlank()) {
+            return preferred;
+        }
+        return fallback == null || fallback.isBlank() ? "нет текста" : fallback;
+    }
+
+    private static String clip(String text, int max) {
+        if (text == null) {
+            return "";
+        }
+        return text.length() <= max ? text : text.substring(0, max) + "…";
+    }
+
+    public synchronized String createTaskMessage(String documentId) {
+        return createFrontBackTasks(documentId);
+    }
+
     public synchronized Overview seedDemo() {
-        String documentId = "demo-application-edit";
-        String fileName = "demo-редактирование-заявки.md";
+        String documentId = "petclinic-visits-md";
+        String fileName = "petclinic-visits.md";
         store.save(new SpecVersionSnap(
                 documentId, fileName, 1, fingerprint(DEMO_V1), Instant.now().minusSeconds(3600).toString(),
                 DEMO_V1, SpecSectionParser.parse(DEMO_V1)));
@@ -348,21 +478,17 @@ public class SpecPipeline {
     }
 
     private static final String DEMO_V1 = """
-            4. Подача заявки
-            Пользователь заполняет заявку на участие в грантовой программе.
-
-            4.2 Редактирование заявки
-            После подачи заявки пользователь не может редактировать поля заявки.
-            Редактирование доступно только пока заявка в статусе черновика.
+            3.2 Отмена и правка описания визита
+            После создания визита владелец не может отменить визит.
+            После создания визита описание визита нельзя редактировать.
+            VisitService.canCancel и canEditDescription возвращают false.
             """;
 
     private static final String DEMO_V2 = """
-            4. Подача заявки
-            Пользователь заполняет заявку на участие в грантовой программе.
-
-            4.2 Редактирование заявки
-            После подачи заявки пользователь может редактировать поля до начала проверки заявки уполномоченным органом.
-            Пока проверка не начата, поля заявки остаются доступны для правки.
+            3.2 Отмена и правка описания визита
+            Владелец может отменить визит, если до даты визита осталось не меньше 24 часов.
+            Описание можно редактировать, пока дата визита в будущем.
+            VisitService.canCancel / canEditDescription и VisitRow флаги canCancel / canEditDescription.
             """;
 
     public record Overview(

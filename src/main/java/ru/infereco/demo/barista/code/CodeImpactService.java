@@ -35,8 +35,15 @@ public class CodeImpactService {
         List<CodeChunk> front = code.search(query, "front", 5);
         List<CodeChunk> back = code.search(query, "back", 5);
         List<CodeChunk> mixed = new ArrayList<>();
-        mixed.addAll(front);
-        mixed.addAll(back);
+        int n = Math.max(front.size(), back.size());
+        for (int i = 0; i < n; i++) {
+            if (i < front.size()) {
+                mixed.add(front.get(i));
+            }
+            if (i < back.size()) {
+                mixed.add(back.get(i));
+            }
+        }
         if (mixed.isEmpty()) {
             mixed.addAll(code.search(query, "", 4));
         }
@@ -53,7 +60,8 @@ public class CodeImpactService {
                 nullToEmpty(change.summary()),
                 nullToEmpty(change.oldBehavior()),
                 nullToEmpty(change.newBehavior()),
-                nullToEmpty(change.sectionPath()));
+                nullToEmpty(change.sectionPath()),
+                "VisitService canCancel canEditDescription VisitController VisitRow PetVisitsPage visitsApi cancel");
     }
 
     private List<SpecChange.AffectedCode> askLlm(SpecChange change, List<CodeChunk> chunks) {

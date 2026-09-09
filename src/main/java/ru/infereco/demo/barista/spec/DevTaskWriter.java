@@ -32,6 +32,9 @@ public class DevTaskWriter {
         try {
             Files.createDirectories(dir);
             String safe = (filename == null ? "sp" : filename).replaceAll("[^\\p{L}\\p{N}._-]+", "-");
+            if (safe.toLowerCase(Locale.ROOT).endsWith(".md")) {
+                safe = safe.substring(0, safe.length() - 3);
+            }
             if (safe.length() > 40) {
                 safe = safe.substring(0, 40);
             }
@@ -68,6 +71,9 @@ public class DevTaskWriter {
         try {
             Files.createDirectories(dir);
             String safe = (filename == null ? "sp" : filename).replaceAll("[^\\p{L}\\p{N}._-]+", "-");
+            if (safe.toLowerCase(Locale.ROOT).endsWith(".md")) {
+                safe = safe.substring(0, safe.length() - 3);
+            }
             if (safe.length() > 40) {
                 safe = safe.substring(0, 40);
             }

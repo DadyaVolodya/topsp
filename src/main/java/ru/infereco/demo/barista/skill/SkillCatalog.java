@@ -29,10 +29,10 @@ public class SkillCatalog {
 
     public Skill get(String id) {
         if (id == null || id.isBlank()) {
-            return skills.get("interview");
+            return skills.get("topsp");
         }
         Skill found = skills.get(id);
-        return found != null ? found : skills.get("interview");
+        return found != null ? found : skills.get("topsp");
     }
 
     public String playbook(String id) {

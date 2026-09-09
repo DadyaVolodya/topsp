@@ -38,12 +38,14 @@ management:
       show-details: never
 
 meet:
-  topic: "Напарник: эфир, СП ПТО, Doom"
+  topic: "TopSP: СП, код, продукт в одном контексте"
   system-prompt: |
-    Ты напарник. Три скила: созвон по голосу, обучалка ПТО по постановкам и коду, Doom-рация.
-    На созвоне опирайся только на эфир, кадр не смотри.
-    По ПТО опирайся на СП, код aisto-front и aisto-pto-back, страницы сайта.
-    В Doom смотри кадр игры.
+    Ты TopSP: интеллектуальный слой продукта.
+    Объединяешь системные постановки, исходный код и приложение.
+    Отслеживаешь изменения требований, оцениваешь влияние на реализацию и превращаешь их в действия команды.
+    Режимы: TopSP по СП/коду PetClinic, #hint подсказчик, созвон (interview), #doom рация.
+    Продукт демо: Spring PetClinic (Owner, Pet, Visit). Не выдумывай Aisto/ПТО/гранты.
+    Без СП в режиме TopSP не выдумывай требования.
     Говори по-русски, сразу по делу. Не здоровайся. Не пиши «я готов».
     Сначала суть, потом один конкретный ход.
     Не выдумывай имена, цифры и кнопки, которых не было в эфире, СП, коде или в кадре Doom.
@@ -59,20 +61,22 @@ meet:
     Чит давай только если игрок просит, застрял или помирает. Код пиши латиницей слитно: iddqd, idkfa, idclip.
     Не выдумывай ключи на E1M1: на Hangar ключей нет, нужен рычаг и EXIT.
   models:
-    chat: minimax/minimax-m3
+    chat: deepseek/deepseek-v4-flash-dspark
     critic: glm-5.3
-    fast: glm-5.3
-    vision: openai/gpt-5.4-mini
+    fast: glm/glm-5.3-flash
+    vision: glm/glm-5.3-flash
   voice:
     pause-ms: 1500
     max-utterance-ms: 60000
     hint-idle-ms: 0
   improve:
     revise-below: 7
-    max-revisions: 0
+    max-revisions: 1
+    loop-enabled: true
+    loop-delay-sec: 50
   speed:
     temperature: 0.2
-    chat-max-tokens: 420
+    chat-max-tokens: 520
     hint-max-tokens: 220
     screen-max-tokens: 280
     history-messages: 8
@@ -81,22 +85,22 @@ meet:
     allow-markdown: false
   demo:
     pto:
-      url: https://dev.aisto.local
-      api: https://dev.aisto.local/api
-      login: pto-pp
+      url: http://localhost:8080
+      api: http://localhost:8080/api
+      login: demo
       password: ${PTO_DEMO_PASSWORD:}
   stt:
     sample-rate: 16000
     model-dir: models/vosk-model-small-ru-0.22
     model-url: https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip
   specs:
-    dir: /Users/sparrow/Documents/pto/СП
-    file: "Системная+постановка_+Проект+АИС+«Платформа+творческого+образования» (2).doc"
-    tasks-dir: /Users/sparrow/Documents/pto/задачи/авто
+    dir: /Users/sparrow/Documents/moi_llm_ne_tvoi_llm/barista-rag/demo/sp
+    file: "petclinic-visits.md"
+    tasks-dir: /Users/sparrow/Documents/moi_llm_ne_tvoi_llm/barista-rag/demo/tasks
   telegram:
     token: ${TELEGRAM_BOT_TOKEN:}
     chat-id: ${TELEGRAM_CHAT_ID:}
   code:
     dirs:
-      - /Users/sparrow/Documents/pto/projects/aisto-front
-      - /Users/sparrow/Documents/pto/projects/aisto-pto-back
+      - /Users/sparrow/Documents/moi_llm_ne_tvoi_llm/barista-rag/demo/code/petclinic-front
+      - /Users/sparrow/Documents/moi_llm_ne_tvoi_llm/barista-rag/demo/code/petclinic-back

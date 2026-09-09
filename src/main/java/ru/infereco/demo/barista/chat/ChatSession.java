@@ -11,7 +11,7 @@ public class ChatSession {
     private final Instant createdAt;
     private final List<ChatMessage> messages = new ArrayList<>();
     private String mode = "meet";
-    private String skill = "interview";
+    private String skill = "topsp";
     private String screenBrief = "";
     private Instant screenAt;
 
@@ -32,7 +32,7 @@ public class ChatSession {
     }
 
     public synchronized String skill() {
-        return skill == null || skill.isBlank() ? "interview" : skill;
+        return skill == null || skill.isBlank() ? "topsp" : skill;
     }
 
     public synchronized void setSkill(String skill) {
@@ -40,7 +40,7 @@ public class ChatSession {
             this.skill = "doom";
             return;
         }
-        this.skill = skill == null || skill.isBlank() ? "interview" : skill;
+        this.skill = skill == null || skill.isBlank() ? "topsp" : skill;
     }
 
     public synchronized boolean doom() {

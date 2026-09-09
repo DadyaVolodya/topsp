@@ -2,6 +2,7 @@ package ru.infereco.demo.barista.chat;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import ru.infereco.demo.barista.config.MeetProperties;
@@ -9,14 +10,18 @@ import ru.infereco.demo.barista.improve.SelfImproveService;
 import ru.infereco.demo.barista.knowledge.KnowledgeCatalog;
 import ru.infereco.demo.barista.knowledge.KnowledgeCatalog.KnowledgeDoc;
 import ru.infereco.demo.barista.metrics.MetricsRegistry;
-import ru.infereco.demo.barista.pto.PtoClient;
-import ru.infereco.demo.barista.pto.PtoPages;
-import ru.infereco.demo.barista.pto.PtoPlace;
 import ru.infereco.demo.barista.skill.SkillCatalog;
 import ru.infereco.demo.barista.skill.SkillRouter;
+import ru.infereco.demo.barista.spec.ProductBrief;
+import ru.infereco.demo.barista.spec.SpecLibrary;
+import ru.infereco.demo.barista.spec.SpecPipeline;
 
 @Service
 public class ChatService {
+
+    private static final String ACTIVE_SPEC = "petclinic-visits.md";
+    private static final String SAMPLE_V1 = "v1-petclinic-visits.md";
+    private static final String SAMPLE_V2 = "v2-petclinic-visits.md";
 
     private final InferecoClient infereco;
     private final ConversationStore store;
@@ -27,7 +32,9 @@ public class ChatService {
     private final RadioScript radioScript;
     private final SkillCatalog skills;
     private final SkillRouter router;
-    private final PtoClient pto;
+    private final SpecPipeline pipeline;
+    private final SpecLibrary specs;
+    private final ProductBrief productBrief;
 
     public ChatService(
             InferecoClient infereco,
@@ -39,7 +46,9 @@ public class ChatService {
             RadioScript radioScript,
             SkillCatalog skills,
             SkillRouter router,
-            PtoClient pto
+            SpecPipeline pipeline,
+            SpecLibrary specs,
+            ProductBrief productBrief
     ) {
         this.infereco = infereco;
         this.store = store;
@@ -50,14 +59,19 @@ public class ChatService {
         this.radioScript = radioScript;
         this.skills = skills;
         this.router = router;
-        this.pto = pto;
+        this.pipeline = pipeline;
+        this.specs = specs;
+        this.productBrief = productBrief;
     }
 
     public ChatSession start() {
         ChatSession session = store.create();
+        session.setSkill("topsp");
         session.add(
                 "assistant",
-                "Я напарник. Созвон: только голос. ПТО: системные постановки и dev.aisto.local. Doom: рация смотрит кадр игры.",
+                "TopSP + PetClinic. Загрузите старое и новое СП (два окна справа) или #sp1/#sp2. "
+                        + "Затем #sp - что изменилось и что менять на front/back. #task - две задачи. "
+                        + "Фон: непрерывное обучение Infereco.",
                 "system",
                 null
         );
@@ -84,22 +98,33 @@ public class ChatService {
 
     public ChatMessage reply(UUID sessionId, String text, String source) {
         ChatSession session = store.require(sessionId);
-        session.add("user", text, source == null || source.isBlank() ? "text" : source, null);
-        session.setSkill(router.route(session.doom(), text, session.screenBrief(), session.skill()));
-        PtoPlace place = session.doom() ? null : pto.find(text, session.screenBrief()).orElse(null);
-        PtoPages.PtoPage page = place != null || session.doom()
-                ? null
-                : PtoPages.resolve(text, session.screenBrief(), ptoSite()).orElse(null);
-        if (place != null || page != null) {
-            session.setSkill("pto-site");
+        String incoming = text == null ? "" : text.trim();
+        session.add("user", incoming, source == null || source.isBlank() ? "text" : source, null);
+
+        String hash = SkillRouter.hashCommand(incoming);
+        if (hash != null) {
+            ChatMessage commanded = handleHash(session, hash, incoming);
+            if (commanded != null) {
+                return commanded;
+            }
         }
 
-        List<KnowledgeDoc> retrieved = knowledge.retrieve(queryFor(session, text), 3);
+        session.setSkill(router.route(session.doom(), incoming, session.screenBrief(), session.skill()));
+
+        if (!session.doom()
+                && "topsp".equals(session.skill())
+                && !hasSpecContext()) {
+            return finishLocal(
+                    session,
+                    "Нет загруженной СП PetClinic. Введите #sp1 (базовая), потом #sp2 (изменение), либо загрузите .md. "
+                            + "Для коротких подсказок: #hint.");
+        }
+
+        List<KnowledgeDoc> retrieved = knowledge.retrieve(queryFor(session, incoming), session.doom() ? 3 : 6);
         String ragContext = knowledge.formatForPrompt(retrieved);
-        if (place != null) {
-            ragContext = place.promptBlock() + (ragContext == null || ragContext.isBlank() ? "" : "\n" + ragContext);
-        } else if (page != null) {
-            ragContext = page.promptBlock() + (ragContext == null || ragContext.isBlank() ? "" : "\n" + ragContext);
+        if ("topsp".equals(session.skill()) || "hint".equals(session.skill())) {
+            String brief = productBrief.forTopSp(incoming);
+            ragContext = brief + (ragContext == null || ragContext.isBlank() ? "" : "\n" + ragContext);
         }
 
         long started = System.currentTimeMillis();
@@ -116,30 +141,101 @@ public class ChatService {
                     ? radioScript.line(0, "нет")
                     : "Infereco сейчас молчит. Повторите реплику через несколько секунд.";
         }
-        if (place != null && answer != null && answer.toLowerCase(java.util.Locale.ROOT).contains("молчит")) {
-            answer = "Это «" + place.name() + "», " + place.address()
-                    + ". Открою карточку на dev.aisto.local. На карточке жми «Постройте маршрут».";
-        } else if (page != null && answer != null && answer.toLowerCase(java.util.Locale.ROOT).contains("молчит")) {
-            answer = "Открываю «" + page.title() + "» на dev.aisto.local" + page.path() + ".";
-        }
         long latency = System.currentTimeMillis() - started;
 
-        ChatMessage assistant = session.add(
-                "assistant",
-                answer,
-                "model",
-                latency,
-                place != null ? place.openUrl() : (page == null ? null : page.openUrl()),
-                place == null ? null : place.cardUrl());
+        ChatMessage assistant = session.add("assistant", answer, "model", latency, null, null);
         metrics.recordTurn(latency);
-        selfImprove.afterTurn(text, answer, List.copyOf(retrieved), session.doom());
+        selfImprove.afterTurn(incoming, answer, List.copyOf(retrieved), session.doom());
         return assistant;
+    }
+
+    private ChatMessage handleHash(ChatSession session, String hash, String incoming) {
+        return switch (hash) {
+            case "doom" -> {
+                enterDoom(session.id());
+                yield session.messages().getLast();
+            }
+            case "hint" -> {
+                session.setSkill("hint");
+                String rest = stripHash(incoming);
+                if (rest.isBlank()) {
+                    yield finishLocal(session, "Режим #hint. Спросите короткий шаг по PetClinic/TopSP. Для СП: #sp1 / #sp2.");
+                }
+                yield null;
+            }
+            case "topsp" -> {
+                session.setMode("meet");
+                session.setSkill("topsp");
+                yield finishLocal(session, "Режим TopSP / PetClinic. #sp1 > #sp2 > вопрос про impact > #task.");
+            }
+            case "sp1" -> {
+                session.setSkill("topsp");
+                yield finishLocal(session, loadSample(SAMPLE_V1, false));
+            }
+            case "sp2" -> {
+                session.setSkill("topsp");
+                yield finishLocal(session, loadSample(SAMPLE_V2, true));
+            }
+            case "sp" -> {
+                session.setSkill("topsp");
+                yield finishLocal(session, pipeline.describeImpact(null));
+            }
+            case "task" -> {
+                session.setSkill("topsp");
+                yield finishLocal(session, pipeline.createFrontBackTasks(null));
+            }
+            default -> null;
+        };
+    }
+
+    private String loadSample(String sampleName, boolean notify) {
+        String text = specs.readSample(sampleName);
+        specs.ingest(ACTIVE_SPEC, text, notify);
+        SpecPipeline.Overview overview = pipeline.overview();
+        StringBuilder out = new StringBuilder();
+        out.append(notify ? "Загружена изменённая СП PetClinic (" : "Загружена базовая СП PetClinic (")
+                .append(sampleName).append(").\n");
+        if (overview != null && overview.documentId() != null && !overview.documentId().isBlank()) {
+            out.append("Документ: ").append(overview.fileName())
+                    .append(" v").append(overview.toVersion())
+                    .append(", секций ").append(overview.sections()).append(".\n");
+            if (notify) {
+                out.append("Изменений: ")
+                        .append(overview.summary() == null ? 0 : overview.summary().getOrDefault("total", 0))
+                        .append(", потенциально файлов кода: ").append(overview.affectedFiles()).append(".\n");
+                if (overview.lastNotice() != null && !overview.lastNotice().isBlank()) {
+                    out.append('\n').append(overview.lastNotice());
+                }
+                out.append("\nСпросите «что изменилось» или введите #task.");
+            } else {
+                out.append("Это v1 (отмена и правка описания запрещены). Дальше #sp2.");
+            }
+        }
+        return out.toString();
+    }
+
+    private boolean hasSpecContext() {
+        return pipeline.primaryDocumentId() != null
+                && !pipeline.versions(pipeline.primaryDocumentId()).isEmpty();
+    }
+
+    private ChatMessage finishLocal(ChatSession session, String answer) {
+        ChatMessage message = session.add("assistant", answer, "system", 0L);
+        metrics.recordTurn(0);
+        return message;
+    }
+
+    private static String stripHash(String text) {
+        if (text == null) {
+            return "";
+        }
+        return text.replaceFirst("^\\s*#[\\w\\-а-яёА-ЯЁ]+\\s*", "").trim();
     }
 
     public ChatMessage hint(UUID sessionId, int elapsedSec, String lastCheat, boolean playing) {
         ChatSession session = store.require(sessionId);
         if (!session.doom()) {
-            throw new IllegalArgumentException("сначала секретная кнопка");
+            throw new IllegalArgumentException("сначала #doom или секретная кнопка");
         }
         String cheat = lastCheat == null || lastCheat.isBlank() ? "нет" : lastCheat.trim();
         String status = "прошло " + Math.max(elapsedSec, 0) + " с. игра "
@@ -179,15 +275,11 @@ public class ChatService {
             throw new IllegalArgumentException("кадр экрана только в Doom");
         }
         String dataUrl = ScreenFrames.dataUrl(image);
-        String query = session.doom()
-                ? queryFor(session, "hangar кадр куда идти рычаг двор яд дверь exit")
-                : queryFor(session, (session.hasScreen() ? session.screenBrief() + " " : "") + "экран слайд карта маршрут");
+        String query = queryFor(session, "hangar кадр куда идти рычаг двор яд дверь exit");
         List<KnowledgeDoc> retrieved = knowledge.retrieve(query, 3);
         String rag = knowledge.formatForPrompt(retrieved);
         String ask = (rag == null || rag.isBlank() ? "" : rag + "\n")
-                + (session.doom()
-                        ? "Игрок двигается. Кадр shareware Doom E1M1 Hangar. Что в кадре и куда идти прямо сейчас?"
-                        : "Кадр с экрана человека. Что видишь и чем помочь прямо сейчас?");
+                + "Игрок двигается. Кадр shareware Doom E1M1 Hangar. Что в кадре и куда идти прямо сейчас?";
         long started = System.currentTimeMillis();
         String insight;
         try {
@@ -203,40 +295,19 @@ public class ChatService {
         }
         long latency = System.currentTimeMillis() - started;
         String draft = insight.replaceAll("(?i)без markdown[^.]*\\.?", "").trim();
-        String fallback = session.doom()
-                ? "На кадре Doom мало читаемого. Кликни игру и иди дальше, рация повторит."
-                : "На кадре мало понятного текста. Шарьте окно встречи, слайд или сайт ПТО.";
-        final String cleaned = draft.isBlank() || draft.toLowerCase(java.util.Locale.ROOT).contains("не больше 3")
+        String fallback = "На кадре Doom мало читаемого. Кликни игру и иди дальше, рация повторит.";
+        final String cleaned = draft.isBlank() || draft.toLowerCase(Locale.ROOT).contains("не больше 3")
                 ? fallback
                 : draft;
-        session.setSkill(router.route(session.doom(), cleaned, cleaned, session.skill()));
-        PtoPlace place = session.doom() ? null : pto.find(cleaned, session.screenBrief()).orElse(null);
-        PtoPages.PtoPage page = place != null || session.doom()
-                ? null
-                : PtoPages.resolve(cleaned, session.screenBrief(), ptoSite()).orElse(null);
-        if (place != null || page != null) {
-            session.setSkill("pto-site");
-        }
+        session.setSkill("doom");
         if (session.sameScreen(cleaned)) {
             return session.messages().reversed().stream()
                     .filter(message -> "screen".equals(message.source()))
                     .findFirst()
-                    .orElseGet(() -> session.add(
-                            "hint",
-                            cleaned,
-                            "screen",
-                            latency,
-                            place != null ? place.openUrl() : (page == null ? null : page.openUrl()),
-                            place == null ? null : place.cardUrl()));
+                    .orElseGet(() -> session.add("hint", cleaned, "screen", latency));
         }
         session.rememberScreen(cleaned);
-        ChatMessage message = session.add(
-                "hint",
-                cleaned,
-                "screen",
-                latency,
-                place != null ? place.openUrl() : (page == null ? null : page.openUrl()),
-                place == null ? null : place.cardUrl());
+        ChatMessage message = session.add("hint", cleaned, "screen", latency);
         metrics.recordScreen(latency);
         return message;
     }
@@ -297,31 +368,12 @@ public class ChatService {
     }
 
     private String screenSystem(ChatSession session) {
-        if (session.doom()) {
-            String playbook = skills.playbook("doom");
-            return """
-                    Ты глаза рации в shareware Doom, карта E1M1 Hangar.
-                    Смотри кадр: комната, двор, яд, рычаг, дверь, враг, броня, дробовик, лестница, EXIT.
-                    Одна короткая подсказка куда идти прямо сейчас. Не выдумывай то, чего не видно.
-                    Без markdown, без списков.
-                    """ + (playbook.isBlank() ? "" : "\n" + playbook);
-        }
-        String primary = skills.playbook(session.skill());
-        StringBuilder prompt = new StringBuilder(properties.fullScreenPrompt());
-        if (!primary.isBlank()) {
-            prompt.append("\n\n").append(primary);
-        }
-        prompt.append("""
-                
-                Если кадр явно про другую сцену, назови её первым предложением и работай по ней.
-                Zoom/Meet/Teams/слайд = собеседование. dev.aisto.local, карта учебных заведений, логин pto-pp = обучалка ПТО.
-                Не смешивай клики сайта ПТО с советами на собеседовании.
-                """);
-        return prompt.toString();
-    }
-
-    private String ptoSite() {
-        MeetProperties.Pto demo = properties.demo() == null ? null : properties.demo().pto();
-        return PtoPages.siteUrl(demo == null ? null : demo.url());
+        String playbook = skills.playbook("doom");
+        return """
+                Ты глаза рации в shareware Doom, карта E1M1 Hangar.
+                Смотри кадр: комната, двор, яд, рычаг, дверь, враг, броня, дробовик, лестница, EXIT.
+                Одна короткая подсказка куда идти прямо сейчас. Не выдумывай то, чего не видно.
+                Без markdown, без списков.
+                """ + (playbook.isBlank() ? "" : "\n" + playbook);
     }
 }

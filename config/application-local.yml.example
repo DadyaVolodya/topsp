@@ -6,10 +6,10 @@ spring:
 
 meet:
   specs:
-    dir: /path/to/specs
-    file: ""
-    tasks-dir: /path/to/tasks
+    dir: /Users/sparrow/Documents/moi_llm_ne_tvoi_llm/barista-rag/demo/sp
+    file: "petclinic-visits.md"
+    tasks-dir: /Users/sparrow/Documents/moi_llm_ne_tvoi_llm/barista-rag/demo/tasks
   code:
     dirs:
-      - /path/to/frontend
-      - /path/to/backend
+      - /Users/sparrow/Documents/moi_llm_ne_tvoi_llm/barista-rag/demo/code/petclinic-front
+      - /Users/sparrow/Documents/moi_llm_ne_tvoi_llm/barista-rag/demo/code/petclinic-back

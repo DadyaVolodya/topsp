@@ -79,6 +79,30 @@ public class SpecVersionStore {
         return list.isEmpty() ? null : list.getLast();
     }
 
+    public synchronized void clearDocument(String documentId) {
+        if (documentId == null || documentId.isBlank()) {
+            return;
+        }
+        versions.remove(documentId);
+        changes.remove(documentId);
+        links.remove(documentId);
+        Path dir = dir(documentId);
+        try {
+            if (Files.isDirectory(dir)) {
+                try (var stream = Files.list(dir)) {
+                    stream.forEach(path -> {
+                        try {
+                            Files.deleteIfExists(path);
+                        } catch (Exception ignored) {
+                        }
+                    });
+                }
+            }
+        } catch (Exception ex) {
+            LOG.warn("не очистил {}: {}", documentId, ex.getMessage());
+        }
+    }
+
     public SpecVersionSnap previous(String documentId) {
         List<SpecVersionSnap> list = versionsOf(documentId);
         return list.size() < 2 ? null : list.get(list.size() - 2);

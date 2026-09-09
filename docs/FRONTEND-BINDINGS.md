@@ -1,364 +1,220 @@
-# Фронт: куда подвязывать AI Copilot
+# Фронт: куда подвязывать TopSP (PetClinic)
 
 База: `http://localhost:8080`  
-JSON, ошибки `{ "error": "текст" }`. CORS не настроен: либо тот же origin, либо прокси.
+JSON, ошибки `{ "error": "текст" }`. CORS на `/api/**` открыт.
 
-Старые ручки чата / голоса / Doom не ломались. Новые экраны конкурса читают блок **Copilot** ниже.
-
-Демо без правки большой СП:
-
-```http
-POST /api/copilot/demo/seed
-```
-
-Появится документ `demo-application-edit`: v1 «после подачи нельзя редактировать», v2 «можно до начала проверки».
+Демо-продукт: **Spring PetClinic** (`demo/sp`, `demo/code/petclinic-*`).
 
 ---
 
-## Экраны и ручки
+## Бинарный формат: что держим и читаем
 
-| Экран | Что показать | Откуда брать |
+**Сейчас бинарного индекса ещё нет.** На диске лежит JSON:
+
+| Что | Где | Формат сейчас |
 | --- | --- | --- |
-| Overview | последнее изменение СП, счётчики, затронутый код, CTA | `GET /api/copilot/overview` |
-| СП | список документов, версия, число изменений | `GET /api/specs` |
-| СП / версии | v(n-1) и v(n), разделы | `GET /api/specs/{documentId}/versions` |
-| Изменения | карточки semantic diff, фильтры | `GET /api/specs/{documentId}/changes` |
-| Изменение | полный текст + impact | `GET /api/specs/{documentId}/changes/{changeId}` |
-| Impact | «потенциально затронут», confidence, exclude | то же + `POST .../exclude` |
-| Код | корни репозиториев + символы | `GET /api/code`, `GET /api/code/symbols?q=` |
-| Задачи | markdown draft | `GET /api/tasks` |
-| Chat | уточнения, `cardUrl` / `openUrl` | `POST /api/sessions`, `POST /api/sessions/{id}/messages` |
-| Live Product | открыть стенд и подсветить | `change.navigation` или `GET /api/navigation?q=` |
-| Metrics | время пайплайна и счётчики | `GET /api/metrics` |
-| Telegram | статус бота, текст последнего notice | `GET /api/telegram` + `overview.lastNotice` |
+| Версии СП | `data/spec-versions/{documentId}/vN.json` | JSON: fingerprint, sections[], rawText |
+| Diff | `.../changes.json` | JSON: SpecChange + affected[] |
+| Связи | `.../links.json` | JSON: requirement-code links |
+| Код | RAM (`CodeLibrary`) | чанки символов из `.java` / `.tsx` |
+| RAG | RAM (`KnowledgeCatalog`) | текстовые куски seed/spec/code/learned |
 
-`documentId` не имя файла, а slug. Пример: файл `заявка.md` > `заявка-md`. Берите поле `documentId` из `GET /api/specs` и `GET /api/copilot/overview`.
+**План бинарного слоя** (см. `docs/PITCH-METRICS.md`):
+
+- blob секций и code chunks (MessagePack / FlatBuffers / свой pack);
+- в индексе только: `id`, `pathHash`, `contentHash`, `offset`, `length`, флаги;
+- diff по `contentHash` без повторного парсинга всего текста;
+- флаги контекста чата выбирают, какие куски читать:
+  - `NEED_SPEC` - секции СП
+  - `HINT` - короткий playbook
+  - `IMPACT` - только high/critical + символы front/back
+  - `TASK` - affected + acceptance
+
+Читать бинарь будут бэкенд-пайплайн и (опционально) фронт только через API, не сырые `.bin`.
+
+---
+
+## Кнопки UI и как их вязать
+
+### 1) Два окна загрузки СП
+
+| Кнопка / контрол | Действие фронта | API |
+| --- | --- | --- |
+| Файл «Старое СП» | `FormData.append("oldFile", file)` | вместе с новым |
+| Файл «Новое СП» | `FormData.append("newFile", file)` | вместе со старым |
+| «Сравнить пару» | `POST /api/specs/pair` multipart | ответ = overview |
+
+```js
+const body = new FormData();
+body.append("oldFile", oldInput.files[0]);
+body.append("newFile", newInput.files[0]);
+const overview = await fetch("/api/specs/pair", { method: "POST", body }).then(r => r.json());
+// overview.documentId, fromVersion, toVersion, summary, affectedFrontend, affectedBackend
+```
+
+После успеха:
+
+1. сохранить `documentId` в state;
+2. обновить Overview / Changes;
+3. показать CTA «Что изменилось» и «Создать задачи».
+
+Альтернатива без файлов (демо): в чат `#sp1` затем `#sp2`.
+
+### 2) Кнопки сценария (чат-скиллы)
+
+Это не отдельные REST-ручки скиллов: фронт шлёт текст в чат. Бэк распознаёт `#…` и отвечает сразу (без «бреда» LLM, кроме обычных вопросов).
+
+| Кнопка на UI | Что отправить в чат | Что придёт в `text` |
+| --- | --- | --- |
+| «Что изменилось / impact» | `#sp` | diff: было/стало + Frontend (что менять) + Backend (что менять) |
+| «Создать задачи» | `#task` | две markdown-задачи: front-… и back-… |
+| «Подсказчик» | `#hint` | короткий режим без СП |
+| «Doom» | `#doom` | вход в doom |
+| Демо v1 / v2 | `#sp1` / `#sp2` | загрузка samples |
+
+```js
+async function sendSkill(sessionId, command) {
+  const msg = await fetch(`/api/sessions/${sessionId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: command, source: "text" })
+  }).then(r => r.json());
+  // msg.text, msg.skill ("topsp"|"hint"|"doom"|...), msg.openUrl, msg.cardUrl
+  renderAssistant(msg);
+  if (command === "#task") await refreshTasks(); // GET /api/tasks
+  if (command === "#sp") await refreshChanges(documentId);
+}
+```
+
+Поле `skill` в ответе - какой режим активен. По нему красьте бейдж («TopSP» / «подсказчик» / «Doom»).
+
+### 3) Кнопки на карточке изменения (не чат)
+
+Данные: `GET /api/specs/{documentId}/changes`
+
+| Кнопка | Откуда данные | Действие |
+| --- | --- | --- |
+| «Показать влияние на код» | `change.affected[]` | список repo/path/symbol; front если `repo` содержит `front` или path `.tsx` |
+| «Задача front» | после `#task` или файл `front-*.md` в `GET /api/tasks` | показать markdown |
+| «Задача back» | файл `back-*.md` | показать markdown |
+| «Открыть в продукте» | `change.navigation.openUrl` | `window.open(openUrl)` |
+| «Подсветить» | `navigation.target` + `action=highlight` | найти DOM по `data-testid` / id = target |
+
+PetClinic demo navigation (если есть): страница visits, target вроде `visit-cancel-button`.
+
+### 4) Кнопки в ответе чата (`openUrl` / `cardUrl`)
+
+Ответ `POST /api/sessions/{id}/messages`:
+
+```json
+{
+  "id": "...",
+  "role": "assistant",
+  "text": "...",
+  "skill": "topsp",
+  "openUrl": "http://localhost:8080/...",
+  "cardUrl": null,
+  "latencyMs": 12
+}
+```
+
+| Поле | Кнопка на UI |
+| --- | --- |
+| `cardUrl` | «Открыть карточку» |
+| `openUrl` | «Открыть» / «Перейти» |
+| оба пустые | только текст (типично для `#sp` / `#task`) |
+
+Правило: если есть `cardUrl` - сначала он; `openUrl` - второй ход (если нужен маршрут/другая страница).
+
+---
+
+## Минимальный поток экранов
+
+```
+[Старое СП] [Новое СП] → POST /api/specs/pair
+        ↓
+GET /api/copilot/overview?documentId=...
+        ↓
+Кнопка «Что изменилось» → POST .../messages { "text": "#sp" }
+  и/или GET /api/specs/{id}/changes  (карточки)
+        ↓
+Кнопка «Создать задачи» → POST .../messages { "text": "#task" }
+  и GET /api/tasks  (front-*.md + back-*.md)
+```
 
 ---
 
 ## Overview
 
 `GET /api/copilot/overview`  
-`GET /api/copilot/overview?documentId=demo-application-edit`
+`GET /api/copilot/overview?documentId=petclinic-visits-md`
 
-```json
-{
-  "documentId": "demo-application-edit",
-  "fileName": "demo-редактирование-заявки.md",
-  "fromVersion": 1,
-  "toVersion": 2,
-  "updatedAt": "2026-09-02T17:00:00Z",
-  "sections": 2,
-  "summary": {
-    "total": 1,
-    "critical": 0,
-    "high": 1,
-    "medium": 0,
-    "low": 0,
-    "cosmetic": 0
-  },
-  "affectedFrontend": 0,
-  "affectedBackend": 0,
-  "affectedFiles": 0,
-  "lastNotice": "СП «...» обновлена...",
-  "links": 0
-}
-```
+Поля: `documentId`, `fileName`, `fromVersion`, `toVersion`, `summary`, `affectedFrontend`, `affectedBackend`, `affectedFiles`, `lastNotice`, `links`.
 
-CTA «Посмотреть изменения»:
+CTA после пары файлов: «Посмотреть изменения» > `GET /api/specs/{documentId}/changes`.
 
-`GET /api/specs/{documentId}/changes`
-
-Поллить Overview каждые 8-15 с, пока идёт загрузка СП (после старта бэка первая версия появляется не сразу).
-
----
-
-## Список СП
-
-`GET /api/specs`
-
-```json
-{
-  "dir": "/Users/sparrow/Documents/pto/СП",
-  "chunks": 184,
-  "lastChange": "2026-09-02T17:00:00Z",
-  "files": [
-    {
-      "file": "Системная+постановка_....doc",
-      "documentId": "системная-постановка-...",
-      "bytes": 123456,
-      "fingerprint": 1,
-      "version": 1,
-      "changes": 0
-    }
-  ]
-}
-```
-
-Действия на карточке документа:
-
-- открыть разделы: `GET /api/specs/{documentId}/versions`
-- сравнить: `GET /api/specs/{documentId}/changes`
-- переанализировать: `POST /api/specs/{documentId}/reanalyze`
-
-`version == 0` и пустой `documentId` в overview значат: пайплайн ещё не сохранил snapshot.
-
----
-
-## Версии
-
-`GET /api/specs/{documentId}/versions`
-
-Две последние версии. Поля секции: `sectionPath`, `heading`, `text` (обрезан до 600), `hash`.  
-Полный raw файл на фронт не отдаём.
-
-Шапка экрана diff: `{fileName}  v{from} > v{to}`.
-
----
-
-## Изменения (главный экран)
-
-`GET /api/specs/{documentId}/changes`  
-`GET /api/specs/{documentId}/changes?includeUnchanged=true`
-
-```json
-{
-  "document": "demo-редактирование-заявки.md",
-  "documentId": "demo-application-edit",
-  "fromVersion": 1,
-  "toVersion": 2,
-  "summary": { "total": 1, "critical": 0, "high": 1, "medium": 0, "low": 0, "cosmetic": 0 },
-  "changes": [
-    {
-      "id": "uuid",
-      "type": "modified",
-      "significance": "high",
-      "sectionPath": "4.2",
-      "heading": "Редактирование заявки",
-      "summary": "Изменён момент, до которого разрешено редактирование",
-      "oldBehavior": "нельзя после подачи",
-      "newBehavior": "можно до начала проверки",
-      "businessImpact": "...",
-      "requiresCodeChange": true,
-      "oldText": "...",
-      "newText": "...",
-      "excluded": false,
-      "affected": [],
-      "navigation": {
-        "route": "/grant-program",
-        "target": "application-edit-button",
-        "action": "highlight",
-        "openUrl": "https://dev.aisto.local/grant-program"
-      }
-    }
-  ]
-}
-```
-
-`type`: `added` | `removed` | `modified` | `unchanged` | `moved`  
-`significance`: `critical` | `high` | `medium` | `low` | `cosmetic`
-
-Фильтры на UI: significance, type, `requiresCodeChange === true`.
-
-Карточка:
-
-- бейдж `[HIGH]` + раздел `sectionPath`
-- summary
-- Было / Стало (`oldBehavior` / `newBehavior`, запасной вариант `oldText` / `newText`)
-- business impact
-- кнопки: «Показать влияние на код» (`affected`), «Открыть в продукте» (`navigation.openUrl`)
-
-Детали без обрезки: `GET /api/specs/{documentId}/changes/{changeId}`
-
-Пересчёт: `POST /api/specs/{documentId}/reanalyze` (тот же JSON, что у GET changes).
-
----
-
-## Impact и исключение ложных
-
-В `affected[]`:
-
-| Поле | Куда |
-| --- | --- |
-| `repo` | колонка Frontend / Backend |
-| `path` | файл |
-| `symbol` | метод / компонент |
-| `symbolType` | подпись: method, component, controller... |
-| `reason` | «почему потенциально затронут» |
-| `confidence` | 0..1, в UI проценты |
-| `startLine` / `endLine` | якорь в файле |
-
-Формулировка только: **потенциально затронут** или **высокая вероятность влияния**. Не писать «этот файл точно надо менять».
-
-Исключить один символ:
+Демо без файлов:
 
 ```http
-POST /api/specs/{documentId}/changes/{changeId}/exclude
-{ "path": "aisto-front/src/...", "symbol": "canEditApplication" }
+POST /api/copilot/demo/seed
 ```
 
-Исключить всё изменение:
+---
 
-```http
-POST /api/specs/{documentId}/changes/{changeId}/exclude
-{}
-```
+## Список СП / версии / changes / impact
 
-Вернуть изменение в выдачу:
+Как раньше:
 
-```http
-POST /api/specs/{documentId}/changes/{changeId}/include
-```
+- `GET /api/specs`
+- `GET /api/specs/{documentId}/versions`
+- `GET /api/specs/{documentId}/changes`
+- `GET /api/specs/{documentId}/changes/{changeId}`
+- `POST .../exclude` / `.../include`
+- `GET /api/specs/{documentId}/links`
 
-Связи СП-код: `GET /api/specs/{documentId}/links`
+`documentId` - slug из API, не имя файла. Пример: `petclinic-visits.md` > `petclinic-visits-md`.
 
-```json
-[{ "changeId": "...", "specVersion": 2, "repo": "...", "file": "...", "symbol": "...", "reason": "...", "confidence": 0.8 }]
-```
+В `affected[]`: `repo`, `path`, `symbol`, `symbolType`, `reason`, `confidence`, `startLine`, `endLine`.  
+Текст только: **потенциально затронут**.
 
 ---
 
 ## Код
 
-`GET /api/code`
-
-```json
-{
-  "files": 862,
-  "chunks": 862,
-  "symbols": 1200,
-  "lastChange": "...",
-  "roots": [{ "name": "aisto-front", "dir": "...", "exists": true }]
-}
-```
-
-Поиск символов для экрана кода / impact:
-
-`GET /api/code/symbols?q=редактир заявк&side=front&limit=20`
-
-`side`: `front` | `back` | пусто.
-
-Ответ: массив `{ repo, path, language, symbol, symbolType, startLine, endLine, text }`.
+`GET /api/code` - корни `petclinic-front`, `petclinic-back`  
+`GET /api/code/symbols?q=canCancel&side=front|back`
 
 ---
 
 ## Задачи
 
-`GET /api/tasks` - до 20 последних markdown.
+`GET /api/tasks` - до 20 последних.
 
-```json
-[{ "file": "20260902-181800-заявка.md", "title": "Изменить: Редактирование заявки", "body": "# ..." }]
-```
+После `#task` появляются два файла:
 
-Блоки в `body`: Причина, Было, Стало, Бизнес-смысл, frontend, backend, Acceptance Criteria, Риски.
+- `…-front-petclinic-visits.md` - исполнитель frontend
+- `…-back-petclinic-visits.md` - исполнитель backend
 
-Кнопки: показать markdown, скопировать `body`. Сохранение на диск уже делает бэк при изменении СП.
-
----
-
-## Навигация по живому продукту
-
-Бэк говорит **что открыть и что подсветить**. Подсветку рисует фронт (aisto-front сам не меняем).
-
-Из изменения:
-
-```json
-"navigation": {
-  "route": "/grant-program",
-  "target": "application-edit-button",
-  "action": "highlight",
-  "openUrl": "https://dev.aisto.local/grant-program"
-}
-```
-
-Свободный запрос: `GET /api/navigation?q=редактировать заявку`
-
-Как открывать:
-
-1. `window.open(navigation.openUrl)` или та же вкладка.
-2. Если умеете встроить стенд / extension: найти элемент по `data-hint` / id ≈ `target` и подсветить.
-3. Если подсветки нет, достаточно открыть `openUrl`.
-
-Чат по-прежнему отдаёт отдельно:
-
-- `cardUrl` - карточка учреждения `/institutions/{id}`
-- `openUrl` - страница или Яндекс-маршрут `rtext=~lat,lon`
-
-Правило чата: если есть `cardUrl`, сначала карточка; если `openUrl` это Яндекс и он не равен карточке, через ~1.4 с открыть маршрут в той же вкладке.
+На UI две кнопки/вкладки: Front / Back, тело из `body`.
 
 ---
 
-## Chat и голос (как было)
+## Чат
 
 ```http
 POST /api/sessions
-GET  /api/sessions/{id}
 POST /api/sessions/{id}/messages
-{ "text": "что изменилось в редактировании заявки", "source": "typed" }
+{ "text": "#sp", "source": "text" }
 ```
 
-Ответ сообщения: `text`, `skill`, `cardUrl`, `openUrl`, `latencyMs`.
+Ответ: `text`, `skill`, `cardUrl`, `openUrl`, `latencyMs`.
 
-Голос: `ws://localhost:8080/ws/stt` PCM 16 kHz, либо `POST /api/transcribe` wav.  
-Интервью без шаринга экрана. Doom: `POST /api/sessions/{id}/doom`.
-
----
-
-## Метрики конкурса
-
-`GET /api/metrics` - старые поля плюс:
-
-| Поле | Смысл |
-| --- | --- |
-| `specDiffDurationMs` | semantic diff |
-| `impactAnalysisDurationMs` | поиск кода |
-| `taskGenerationDurationMs` | markdown задачи |
-| `changesDetected` | число изменений последнего прогона |
-| `highImpactChanges` | critical + high |
-| `affectedFiles` | уникальные файлы |
-| `tasksGenerated` | сколько draft создано с старта процесса |
-
-Для слайда: ручной разбор 20-40 мин, пайплайн обычно десятки секунд.
+Команды: `#sp`, `#task`, `#sp1`, `#sp2`, `#hint`, `#doom`, `#topsp`.
 
 ---
 
-## Telegram
+## Metrics
 
-`GET /api/telegram` > `{ enabled, chats, hint }`. Telegram **не используется**: сеть не дергаем. Текст для тоста: `overview.lastNotice`.
+`GET /api/metrics` - `specDiffDurationMs`, `impactAnalysisDurationMs`, `taskGenerationDurationMs`, `changesDetected`, `affectedFiles`, `tasksGenerated`, `avgLatencyMs`, improve-счётчики.
 
----
-
-## Поллинг
-
-| Что | Интервал |
-| --- | --- |
-| Overview, specs, tasks, telegram | 10 с |
-| changes после seed / reanalyze | один раз сразу, потом 10 с пока `toVersion` не вырос |
-| code / symbols | 30 с (индекс кода обновляется раз в 2 мин) |
-| metrics | 15 с |
-
-Не дёргайте `reanalyze` в цикле.
-
----
-
-## Демо-сценарий для жюри
-
-1. Старт бэка, подождать индекс (СП + код).
-2. `POST /api/copilot/demo/seed`
-3. Overview: 1 high change, v1 > v2.
-4. Экран изменений: раздел 4.2, было / стало.
-5. Impact: символы, если код уже в индексе.
-6. Задачи: новый `.md`.
-7. Кнопка Live Product: `openUrl` грантовой программы.
-8. Чат: «что поменять в коде после правки СП».
-
-Альтернатива seed: заменить файл из `meet.specs.file` в папке СП. Watcher сам снимет v2 и прогонит пайплайн.
-
----
-
-## Чего бэк не делает
-
-- Не подсвечивает DOM на `dev.aisto.local` (другой origin).
-- Не пишет в Jira.
-- Interview / Doom не удалены, но это не главный сюжет.
-- Токен бота на фронт не отдаём.
+Модели: `GET /api/tuning` - `chatModel` / `criticModel` / `hintModel` (сейчас deepseek-v4-flash-dspark, glm-5.3, glm-5.3-flash).

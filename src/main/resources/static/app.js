@@ -14,6 +14,10 @@ const modelsEl = document.getElementById("models");
 const uploadForm = document.getElementById("upload");
 const txtFile = document.getElementById("txt-file");
 const uploadStatus = document.getElementById("upload-status");
+const spPairForm = document.getElementById("sp-pair");
+const spOld = document.getElementById("sp-old");
+const spNew = document.getElementById("sp-new");
+const spPairStatus = document.getElementById("sp-pair-status");
 const improveStatus = document.getElementById("improve-status");
 const gameStatus = document.getElementById("game-status");
 const radioOnEl = document.getElementById("radio-on");
@@ -145,8 +149,14 @@ function renderSession(session) {
 function setSkillUi(skill) {
   const el = document.getElementById("skill-label");
   if (!el) return;
-  const names = { interview: "собеседование", "pto-site": "обучалка ПТО", doom: "Doom-рация" };
-  el.textContent = "скил: " + (names[skill] || skill || "собеседование");
+  const names = {
+    topsp: "TopSP",
+    hint: "подсказчик",
+    interview: "собеседование",
+    "pto-site": "обучалка ПТО",
+    doom: "Doom-рация"
+  };
+  el.textContent = "скил: " + (names[skill] || skill || "TopSP");
 }
 
 function stat(title, value, how) {
@@ -1089,6 +1099,31 @@ document.getElementById("cheats").addEventListener("click", (e) => {
     gameStatus.textContent = err.message;
   });
 });
+
+if (spPairForm) {
+  spPairForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const oldFile = spOld && spOld.files[0];
+    const newFile = spNew && spNew.files[0];
+    if (!oldFile || !newFile) {
+      spPairStatus.textContent = "выберите старое и новое СП";
+      return;
+    }
+    const body = new FormData();
+    body.append("oldFile", oldFile);
+    body.append("newFile", newFile);
+    spPairStatus.textContent = "сравниваю пару СП...";
+    try {
+      const overview = await api("/api/specs/pair", { method: "POST", body });
+      spPairStatus.textContent = `СП «${overview.fileName || "petclinic"}» v${overview.fromVersion}>v${overview.toVersion}, изменений ${(overview.summary && overview.summary.total) || 0}. В чате: #sp затем #task.`;
+      spOld.value = "";
+      spNew.value = "";
+      await refreshMeta();
+    } catch (err) {
+      spPairStatus.textContent = err.message;
+    }
+  });
+}
 
 if (uploadForm) {
   uploadForm.addEventListener("submit", async (e) => {

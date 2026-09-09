@@ -151,6 +151,55 @@ public class SpecLibrary {
         return specs.file().trim();
     }
 
+    public synchronized void indexOnly(String fileName, String text) {
+        if (fileName == null || fileName.isBlank() || text == null) {
+            return;
+        }
+        Path root = dir();
+        try {
+            Files.createDirectories(root);
+            Path target = root.resolve(fileName);
+            Files.writeString(target, text);
+            fingerprints.put(fileName, fingerprint(text));
+            knowledge.replaceSpec(fileName, text);
+            lastChange = Instant.now();
+        } catch (Exception ex) {
+            throw new IllegalStateException("не проиндексировал СП: " + ex.getMessage(), ex);
+        }
+    }
+
+    public synchronized void ingest(String fileName, String text, boolean notify) {
+        if (fileName == null || fileName.isBlank() || text == null) {
+            throw new IllegalArgumentException("нужны имя файла и текст СП");
+        }
+        Path root = dir();
+        try {
+            Files.createDirectories(root);
+            Path target = root.resolve(fileName);
+            Files.writeString(target, text);
+            fingerprints.remove(fileName);
+            reload(target, notify);
+        } catch (Exception ex) {
+            throw new IllegalStateException("не сохранил СП: " + ex.getMessage(), ex);
+        }
+    }
+
+    public Path samplesDir() {
+        return dir().resolve("samples");
+    }
+
+    public String readSample(String name) {
+        Path file = samplesDir().resolve(name);
+        if (!Files.isRegularFile(file)) {
+            throw new IllegalArgumentException("нет образца " + name);
+        }
+        try {
+            return Files.readString(file);
+        } catch (Exception ex) {
+            throw new IllegalStateException("не прочитал образец: " + ex.getMessage(), ex);
+        }
+    }
+
     synchronized void reload(Path file, boolean notify) {
         if (file == null || !Files.isRegularFile(file)) {
             return;

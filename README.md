@@ -18,7 +18,11 @@ cp config/application-local.yml.example config/application-local.yml
 
 База: `http://localhost:8080`
 
-Пути к СП и коду ПТО задаются в `meet.specs` и `meet.code` (`application.yml` или local).
+Демо-контур: Spring PetClinic в `demo/` (СП visits + front/back). Концепция: [docs/CONCEPT.md](docs/CONCEPT.md). Метрики: [docs/PITCH-METRICS.md](docs/PITCH-METRICS.md).
+
+Чат-команды: `#sp1` `#sp2` `#task` `#hint` `#doom` `#sp`.
+
+Пути к СП и коду: `meet.specs` / `meet.code` (по умолчанию `demo/sp` и `demo/code/petclinic-*`).
 
 ## Ручки для фронта
 
@@ -40,6 +44,7 @@ cp config/application-local.yml.example config/application-local.yml
 | POST | `/api/specs/{documentId}/changes/{changeId}/exclude` | исключить ложный код или всё изменение |
 | POST | `/api/specs/{documentId}/changes/{changeId}/include` | вернуть изменение |
 | GET | `/api/specs/{documentId}/links` | связи требование-код |
+| POST | `/api/specs/upload` | загрузить `.md`/`.txt` СП в watcher + pipeline |
 | GET | `/api/code` | индекс репозиториев |
 | GET | `/api/code/symbols?q=&side=front\|back` | символы для impact |
 | GET | `/api/tasks` | markdown draft задач |

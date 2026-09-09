@@ -27,7 +27,14 @@ public record MeetProperties(
     public record Voice(int pauseMs, int maxUtteranceMs, int hintIdleMs) {
     }
 
-    public record Improve(double reviseBelow, int maxRevisions) {
+    public record Improve(double reviseBelow, int maxRevisions, Boolean loopEnabled, Integer loopDelaySec) {
+        public boolean loopOn() {
+            return !Boolean.FALSE.equals(loopEnabled);
+        }
+
+        public int loopDelaySeconds() {
+            return loopDelaySec == null || loopDelaySec < 15 ? 50 : loopDelaySec;
+        }
     }
 
     public record Speed(double temperature, int chatMaxTokens, int hintMaxTokens, int screenMaxTokens, int historyMessages) {
